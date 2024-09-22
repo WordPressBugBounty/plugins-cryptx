@@ -1,0 +1,35 @@
+.cryptx-option-page { padding-right: 20px; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper { background: #ffffff; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; border-left: 1px solid #ccc; box-shadow: 0px 12px 18px -6px rgba(0, 0, 0, 0.3); }
+
+.cryptx-option-page .cryptx-tab-content-wrapper > h4 { background: #e5e5e5; color: #555555; padding: 1em; margin: 0 0 1em 0; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper > h4:nth-child(n+2) { margin-top: 2em; border-top: 1px solid #ccc; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper table { padding: 0; margin: 0; width: 100%; border-collapse: collapse; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper table tbody tr th { padding: 0.5em 1em; text-align: left; vertical-align: text-bottom; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper table tbody tr td { padding: 1em; text-align: left; vertical-align: text-bottom; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper table tbody tr.spacer td { padding: 0; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper #opt_linktext4_notice { color: red; font-weight: 600; line-height: 2em; padding: 0 1em; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper p.submit { background: #eeeeee; border-top: 1px solid #ccc; padding-top: 20px; padding-left: 20px; margin-bottom: 0; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper #image-preview { max-height: 5em; width: auto; margin-top: 10px; border: 1px solid #999999; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper .warning { color: red !important; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper dl { padding: 0 20px; border-bottom: 1px solid #ccc; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper dl:last-child { border-bottom: none; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper dl dt { vertical-align: text-top; display: inline-block; width: 5em; font-weight: 600; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper dl dd { display: inline-block; vertical-align: text-top; }
+
+.cryptx-option-page .cryptx-tab-content-wrapper dl dd ul { list-style-type: inherit; margin: 0; }
+
+.cryptx-option-page button.remove { color: red; }

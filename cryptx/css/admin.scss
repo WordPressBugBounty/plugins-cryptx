@@ -1,0 +1,109 @@
+.cryptx-option-page {
+    padding-right: 20px;
+
+    .cryptx-tab-content-wrapper {
+        background: #ffffff;
+        border-right: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        border-left: 1px solid #ccc;
+        box-shadow: 0px 12px 18px -6px rgba(0,0,0,0.3);
+
+        & > h4 {
+        	background: #e5e5e5;
+        	color: #555555;
+        	padding: 1em;
+        	margin: 0 0 1em 0;
+
+        	&:nth-child(n+2) {
+            	margin-top: 2em;
+            	border-top: 1px solid #ccc;
+        	}
+        }
+
+        table {
+            padding: 0;
+            margin: 0;
+            width: 100%;
+            border-collapse: collapse;
+
+            tbody {
+                tr {
+                    th {
+                        padding: 0.5em 1em;
+                        text-align: left;
+                        vertical-align: text-bottom;
+                    }
+                    td {
+                        padding: 1em;
+                        text-align: left;
+                        vertical-align: text-bottom;
+                    }
+                    &.spacer {
+                        td {
+                            padding: 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        #opt_linktext4_notice {
+            color: red;
+            font-weight: 600;
+            line-height: 2em;
+            padding: 0 1em;
+        }
+
+        p.submit {
+            background: #eeeeee;
+            border-top: 1px solid #ccc;
+            padding-top: 20px;
+            padding-left: 20px;
+            margin-bottom: 0;
+        }
+
+        #image-preview {
+            max-height: 5em;
+            width: auto;
+            margin-top: 10px;
+            border: 1px solid #999999;
+        }
+        .warning {
+            color: red !important;
+        }
+
+        dl {
+            padding: 0 20px;
+            border-bottom: 1px solid #ccc;
+
+            &:last-child {
+                border-bottom: none;
+            }
+
+            dt {
+                vertical-align: text-top;
+                display: inline-block;
+                width: 5em;
+                font-weight: 600;
+            }
+
+            dd {
+                display: inline-block;
+                vertical-align: text-top;
+
+                ul {
+                    list-style-type: inherit;
+                    margin:0;
+
+                    li {
+
+                    }
+                }
+            }
+        }
+    }
+
+    button.remove {
+        color: red;
+    }
+}

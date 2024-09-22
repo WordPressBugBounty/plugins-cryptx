@@ -1,0 +1,1 @@
+function DeCryptString(r){for(var t=0,n="mailto:",o=0,e=0;e<r.length/2;e++)o=r.substr(2*e,1),t=r.charCodeAt(2*e+1),t>=8364&&(t=128),n+=String.fromCharCode(t-o);return n}function DeCryptX(r){location.href=DeCryptString(r)}
