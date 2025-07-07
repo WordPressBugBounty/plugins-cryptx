@@ -3,11 +3,13 @@ Contributors: d3395
 Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696
 Tags: antispam, email, mail, addresses
 Requires at least: 6.0
-Tested up to: 6.5
-Stable tag: 3.4.5.3
-Requires PHP: 7.4
+Tested up to: 6.8
+Stable tag: 3.5.0
+Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
+
+No more SPAM by spiders scanning you site for email addresses!
 
 == Description ==
 
@@ -21,6 +23,11 @@ No more SPAM by spiders scanning you site for email addresses. With CryptX you c
 2. Template functions
 
 == Changelog ==
+= 3.5.0 =
+* Parts of the code have been rewritten to make the plugin more maintainable.
+* fixed some bugs
+* added option to disable CryptX on RSS feeds (requested: https://wordpress.org/support/topic/cryptx-should-be-disabled-for-rss-content/)
+* Added new Javascript function to add CryptX mailto links via javascript on client side (requested: https://wordpress.org/support/topic/javascript-function-to-encrypt-emails/)
 = 3.4.5.3 =
 * fixed a Critical error in combination with WPML
 = 3.4.5.2 =
