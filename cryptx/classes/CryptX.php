@@ -15,6 +15,7 @@ final class CryptX
     private static array $cryptXOptions = [];
     private static int $imageCounter = 0;
     private const FONT_EXTENSION = 'ttf';
+    private const PAYPAL_DONATION_URL = 'https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696';
     private CryptXSettingsTabs $settingsTabs;
     private Config $config;
 
@@ -128,7 +129,7 @@ final class CryptX
      */
     private function registerAdditionalHooks(): void
     {
-        add_filter('plugin_row_meta', 'rw_cryptx_init_row_meta', 10, 2);
+        add_filter('plugin_row_meta', [$this, 'add_plugin_action_links'], 10, 2);
         add_filter('init', [$this, 'cryptXtinyUrl']);
         add_shortcode('cryptx', [$this, 'cryptXShortcode']);
     }
@@ -1089,4 +1090,48 @@ final class CryptX
         return is_feed();
     }
 
+    /**
+     * Adds plugin action links to the WordPress plugin row
+     *
+     * @param array  $links Existing plugin row links
+     * @param string $file  Plugin file path
+     * @return array Modified plugin row links
+     */
+    public function add_plugin_action_links(array $links, string $file): array
+    {
+        if ($file !== CRYPTX_BASENAME) {
+            return $links;
+        }
+
+        $additional_links = [
+            $this->create_settings_link(),
+            $this->create_donation_link()
+        ];
+
+        return array_merge($links, $additional_links);
+    }
+
+    /**
+     * Creates the settings link for the plugin
+     */
+    private function create_settings_link(): string
+    {
+        return sprintf(
+            '<a href="options-general.php?page=%s">%s</a>',
+            CRYPTX_BASEFOLDER,
+            __('Settings')
+        );
+    }
+
+    /**
+     * Creates the donation link for the plugin
+     */
+    private function create_donation_link(): string
+    {
+        return sprintf(
+            '<a href="%s">%s</a>',
+            self::PAYPAL_DONATION_URL,
+            __('Donate', 'cryptx')
+        );
+    }
 }

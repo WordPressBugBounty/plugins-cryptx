@@ -4,7 +4,7 @@ Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_i
 Tags: antispam, email, mail, addresses
 Requires at least: 6.0
 Tested up to: 6.8
-Stable tag: 3.5.0
+Stable tag: 3.5.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -23,6 +23,8 @@ No more SPAM by spiders scanning you site for email addresses. With CryptX you c
 2. Template functions
 
 == Changelog ==
+= 3.5.1 =
+* fixed a bug with missing function
 = 3.5.0 =
 * Parts of the code have been rewritten to make the plugin more maintainable.
 * fixed some bugs
