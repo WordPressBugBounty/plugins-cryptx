@@ -16,13 +16,15 @@ final class CryptX
     private static int $imageCounter = 0;
     private const FONT_EXTENSION = 'ttf';
     private const PAYPAL_DONATION_URL = 'https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696';
+    private const MAILTO_PATTERN = '/<a (.*?)(href=("|\')mailto:(.*?)("|\')(.*?)|)>\s*(.*?)\s*<\/a>/i';
+    private const EMAIL_PATTERN = "/([_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,}))/i";
     private CryptXSettingsTabs $settingsTabs;
     private Config $config;
 
     private function __construct()
     {
         $this->settingsTabs = new CryptXSettingsTabs($this);
-        $this->config = new Config( get_option('cryptX') );
+        $this->config = new Config( get_option('cryptX', []) );
         self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
     }
 
@@ -259,10 +261,6 @@ final class CryptX
 
         return $this->replaceEmailInContent($content, $shortcode);
     }
-
-
-    private const MAILTO_PATTERN = '/<a (.*?)(href=("|\')mailto:(.*?)("|\')(.*?)|)>\s*(.*?)\s*<\/a>/i';
-    private const EMAIL_PATTERN = "/([_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,}))/i";
 
     private function processAndEncryptEmails(EmailProcessingConfig $config): string
     {
@@ -606,12 +604,14 @@ final class CryptX
     }
 
     /**
-     * Finds and encrypts email addresses in content.
+     * Finds and processes email addresses within the given content.
      *
-     * @param string|null $content The content where email addresses will be searched and encrypted.
-     * @param bool $shortcode Specifies whether shortcodes should be processed or not. Default is false.
+     * This method scans the provided content for email addresses and encrypts them based on the configuration.
+     * It checks for RSS feed settings and excluded post IDs to determine whether encryption should be applied.
      *
-     * @return string|null The content with encrypted email addresses, or null if $content is null.
+     * @param string|null $content The content to search for email addresses. If null, the method returns null.
+     * @param bool $shortcode Specifies whether the method is invoked via a shortcode.
+     * @return string|null The processed content with email addresses encrypted, or null if the input content is null.
      */
     public function findEmailAddressesInContent(?string $content, bool $shortcode = false): ?string
     {
@@ -623,18 +623,14 @@ final class CryptX
             return null;
         }
 
-        // Skip processing for RSS feeds if the option is enabled
-/*        if (self::$cryptXOptions['disable_rss'] && $this->isRssFeed()) {
-            return $content;
-        }*/
-
         $postId = (is_object($post)) ? $post->ID : -1;
-
         $isIdExcluded = $this->isIdExcluded($postId);
-        $mailtoRegex = '/<a (.*?)(href=("|\')mailto:(.*?)("|\')(.*?)|)>\s*(.*?)\s*<\/a>/i';
+
+        // FIXED: Added 's' modifier to handle multiline HTML (like Elementor buttons)
+        $mailtoRegex = '/<a\s+[^>]*href=(["\'])mailto:([^"\']+)\1[^>]*>(.*?)<\/a>/is';
 
         if ((!$isIdExcluded || $shortcode !== null)) {
-            $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddress'], $content);
+            $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressNew'], $content);
         }
 
         return $content;
@@ -662,19 +658,69 @@ final class CryptX
         }
 
         $return = $originalValue;
+        
+        // Apply JavaScript handler if enabled
         if (!empty(self::$cryptXOptions['java'])) {
             $javaHandler = "javascript:DeCryptX('" . $this->generateHashFromString($searchResults[self::INDEX_TO_CHECK]) . "')";
             $return = str_replace(self::MAIL_IDENTIFIER . $searchResults[self::INDEX_TO_CHECK], $javaHandler, $originalValue);
+        } else {
+            // Only apply antispambot if JavaScript is not enabled
+            $return = str_replace($mailReference, antispambot($mailReference), $return);
         }
 
-        $return = str_replace($mailReference, antispambot($mailReference), $return);
-
+        // Add CSS attributes if specified
         if (!empty(self::$cryptXOptions['css_id'])) {
             $return = preg_replace(self::PATTERN, '$1" id="' . self::$cryptXOptions['css_id'] . '">', $return);
         }
 
         if (!empty(self::$cryptXOptions['css_class'])) {
             $return = preg_replace(self::PATTERN, '$1" class="' . self::$cryptXOptions['css_class'] . '">', $return);
+        }
+
+        return $return;
+    }
+
+    /**
+     * Encrypts an email address found in the search results and modifies it to safeguard against email harvesting.
+     *
+     * @param array $searchResults Array containing search result data, where:
+     *                             - Index 0 contains the full match.
+     *                             - Index 2 contains the email address.
+     *                             - Index 3 contains the link text for the email.
+     * @return string The encrypted or modified email link.
+     */
+    private function encryptEmailAddressNew(array $searchResults): string
+    {
+        $originalValue = $searchResults[0];  // Full match
+        $emailAddress = $searchResults[2];   // Email address (now at index 2)
+        $linkText = $searchResults[3];       // Link text (now at index 3)
+
+        if (strpos($emailAddress, '@') === self::NOT_FOUND) {
+            return $originalValue;
+        }
+
+        if (str_starts_with($emailAddress, self::SUBJECT_IDENTIFIER)) {
+            return $originalValue;
+        }
+
+        $return = $originalValue;
+
+        // Apply JavaScript handler if enabled
+        if (!empty(self::$cryptXOptions['java'])) {
+            $javaHandler = "javascript:DeCryptX('" . $this->generateHashFromString($emailAddress) . "')";
+            $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
+        } else {
+            // Only apply antispambot if JavaScript is not enabled
+            $return = str_replace('mailto:' . $emailAddress, antispambot('mailto:' . $emailAddress), $return);
+        }
+
+        // Add CSS attributes if specified
+        if (!empty(self::$cryptXOptions['css_id'])) {
+            $return = preg_replace('/(<a\s+[^>]*)(>)/i', '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
+        }
+
+        if (!empty(self::$cryptXOptions['css_class'])) {
+            $return = preg_replace('/(<a\s+[^>]*)(>)/i', '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
         }
 
         return $return;
