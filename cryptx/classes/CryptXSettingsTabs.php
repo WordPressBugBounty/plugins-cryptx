@@ -78,17 +78,11 @@ class CryptXSettingsTabs
             CRYPTX_VERSION
         );
 
+        // Enqueue WordPress color picker assets
         wp_enqueue_style('wp-color-picker');
+        wp_enqueue_script('wp-color-picker');
 
-        // Enqueue JavaScript files
-        wp_enqueue_script(
-            'cryptx-admin-js',
-            CRYPTX_DIR_URL . 'js/cryptx-admin.min.js',
-            ['jquery', 'wp-color-picker'],
-            CRYPTX_VERSION,
-            true
-        );
-
+        // Enqueue media uploader
         wp_enqueue_media();
     }
 
@@ -132,8 +126,12 @@ class CryptXSettingsTabs
 
             $saveOptions = DataSanitizer::sanitize($_POST['cryptX_var']);
 
+            // Handle reset for any tab
             if (isset($_POST['cryptX_var_reset'])) {
-                $saveOptions = $this->cryptX->getCryptXOptionsDefaults();
+                $this->cryptX->getCryptXOptionsDefaults();
+                $this->cryptX->getConfig()->reset();
+                $this->displayResetMessage();
+                return;
             }
 
             if (isset($_POST['cryptX_save_general_settings'])) {
@@ -144,7 +142,6 @@ class CryptXSettingsTabs
             $this->displaySuccessMessage();
         }
     }
-
 
     /**
      * Parse general settings
@@ -172,7 +169,20 @@ class CryptXSettingsTabs
         add_settings_error(
             'cryptx_messages',
             'cryptx_message',
-            __('Settings saved.'),
+            __('Settings saved.', 'cryptx'),
+            'updated'
+        );
+    }
+
+    /**
+     * Display reset message
+     */
+    private function displayResetMessage(): void
+    {
+        add_settings_error(
+            'cryptx_messages',
+            'cryptx_reset',
+            __('Settings have been reset to defaults.', 'cryptx'),
             'updated'
         );
     }
@@ -293,9 +303,9 @@ class CryptXSettingsTabs
             $generalTab = new GeneralSettingsTab($config);
 
             // Handle form submission if needed
-            if (isset($_POST['cryptX_save_general_settings'])) {
-                if (!empty($_POST['cryptX_var'])) {
-                    $generalTab->saveSettings($_POST['cryptX_var']);
+            if (isset($_POST['cryptX_save_general_settings']) || isset($_POST['cryptX_var_reset'])) {
+                if (!empty($_POST['cryptX_var']) || isset($_POST['cryptX_var_reset'])) {
+                    $generalTab->saveSettings($_POST['cryptX_var'] ?? []);
                 }
             }
 
@@ -327,9 +337,9 @@ class CryptXSettingsTabs
             $presentationTab = new PresentationSettingsTab($config);
 
             // Handle form submission if needed
-            if (isset($_POST['cryptX_save_presentation_settings'])) {
-                if (!empty($_POST['cryptX_var'])) {
-                    $presentationTab->saveSettings($_POST['cryptX_var']);
+            if (isset($_POST['cryptX_save_presentation_settings']) || isset($_POST['cryptX_var_reset'])) {
+                if (!empty($_POST['cryptX_var']) || isset($_POST['cryptX_var_reset'])) {
+                    $presentationTab->saveSettings($_POST['cryptX_var'] ?? []);
                 }
             }
 
@@ -373,96 +383,5 @@ class CryptXSettingsTabs
                 'error'
             );
         }
-    }
-
-
-    /**
-     * Parse and render changelog content from readme.txt
-     */
-    private function renderChangelogContent(): void
-    {
-        $readmePath = CRYPTX_DIR_PATH . '/readme.txt';
-        if (!file_exists($readmePath)) {
-            return;
-        }
-
-        $fileContents = file_get_contents($readmePath);
-        if ($fileContents === false) {
-            return;
-        }
-
-        $changelogs = $this->parseChangelog($fileContents);
-        foreach ($changelogs as $log) {
-            echo wp_kses_post("<dl>" . implode("", $log) . "</dl>");
-        }
-    }
-
-    /**
-     * Parse changelog content from readme.txt
-     *
-     * @param string $content
-     * @return array
-     */
-    private function parseChangelog(string $content): array
-    {
-        $content = str_replace(["\r\n", "\r"], "\n", $content);
-        $content = trim($content);
-
-        // Split into sections
-        $sections = $this->parseSections($content);
-        if (!isset($sections['changelog'])) {
-            return [];
-        }
-
-        // Parse changelog entries
-        return $this->parseChangelogEntries($sections['changelog']['content']);
-    }
-
-    /**
-     * Parse sections from readme content
-     *
-     * @param string $content
-     * @return array
-     */
-    private function parseSections(string $content): array
-    {
-        $_sections = preg_split('/^[\s]*==[\s]*(.+?)[\s]*==/m', $content, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
-        $sections = [];
-
-        for ($i = 1; $i <= count($_sections); $i += 2) {
-            $title = $_sections[$i - 1];
-            $sections[str_replace(' ', '_', strtolower($title))] = [
-                'title' => $title,
-                'content' => $_sections[$i]
-            ];
-        }
-
-        return $sections;
-    }
-
-    /**
-     * Parse changelog entries
-     *
-     * @param string $content
-     * @return array
-     */
-    private function parseChangelogEntries(string $content): array
-    {
-        $_changelogs = preg_split('/^[\s]*=[\s]*(.+?)[\s]*=/m', $content, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
-        $changelogs = [];
-
-        for ($i = 1; $i <= count($_changelogs); $i += 2) {
-            $version = $_changelogs[$i - 1];
-            $content = ltrim($_changelogs[$i], "\n");
-            $content = str_replace("* ", "<li>", $content);
-            $content = str_replace("\n", " </li>\n", $content);
-
-            $changelogs[] = [
-                'version' => "<dt>" . esc_html($version) . "</dt>",
-                'content' => "<dd><ul>" . wp_kses_post($content) . "</ul></dd>"
-            ];
-        }
-
-        return $changelogs;
     }
 }

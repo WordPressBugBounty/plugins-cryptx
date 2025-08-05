@@ -32,6 +32,16 @@ final class Config {
         'filter' => ['the_content', 'the_meta_key', 'the_excerpt', 'comment_text', 'widget_text'],
         'whiteList' => 'jpeg,jpg,png,gif',
         'disable_rss' => 1, // Disable CryptX in RSS feeds by default
+        'encryption_mode' => 'secure', // Changed to 'secure' by default
+        'encryption_password' => null,  // Will be auto-generated if null
+        'use_secure_encryption' => 1,   // Enable secure encryption by default
+    ];
+
+    // Define the actual widget filters that will be used when widget_text is enabled
+    private const WIDGET_FILTERS = [
+        'widget_text',                    // Legacy text widget (pre-4.9)
+        'widget_text_content',            // Modern text widget (4.9+)
+        'widget_custom_html_content'      // Custom HTML widget (4.8.1+)
     ];
 
     private array $options;
@@ -100,6 +110,15 @@ final class Config {
         return $this->options['version'];
     }
 
+    /**
+     * Get the actual widget filters to be applied
+     *
+     * @return array
+     */
+    public function getWidgetFilters(): array {
+        return self::WIDGET_FILTERS;
+    }
+
     public function updateFromShortcode(array $attributes, string $tag): void {
         $this->originalOptions = $this->options;
         $shortcodeOptions = shortcode_atts(
@@ -122,7 +141,7 @@ final class Config {
     {
         // Convert checkbox values to integers
         foreach (['the_content', 'the_meta_key', 'the_excerpt', 'comment_text',
-                     'widget_text', 'autolink', 'metaBox', 'disable_rss'] as $key) {
+                     'widget_text', 'autolink', 'metaBox', 'disable_rss', 'use_secure_encryption'] as $key) {
             if (isset($newOptions[$key])) {
                 $newOptions[$key] = (int)$newOptions[$key];
             }
@@ -163,5 +182,44 @@ final class Config {
         }
 
         $this->save();
+    }
+
+    /**
+     * Retrieves the encryption mode configured in the options.
+     *
+     * @return string Returns the encryption mode as a string. Defaults to 'secure' if not set.
+     */
+    public function getEncryptionMode(): string
+    {
+        return $this->options['encryption_mode'] ?? 'secure';
+    }
+
+    /**
+     * Checks if secure encryption is enabled in the options.
+     *
+     * @return bool Returns true if secure encryption is enabled, false otherwise.
+     */
+    public function isSecureEncryptionEnabled(): bool
+    {
+        return (bool) ($this->options['use_secure_encryption'] ?? true);
+    }
+
+    /**
+     * Retrieves the encryption password configured in the options or generates a secure password if not set.
+     *
+     * @return string Returns the encryption password as a string.
+     */
+    public function getEncryptionPassword(): string
+    {
+        if (empty($this->options['encryption_password'])) {
+            // Generate a secure password based on WordPress keys
+            $this->options['encryption_password'] = hash('sha256',
+                (defined('AUTH_KEY') ? AUTH_KEY : '') .
+                (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') .
+                get_site_url()
+            );
+            $this->save();
+        }
+        return $this->options['encryption_password'];
     }
 }

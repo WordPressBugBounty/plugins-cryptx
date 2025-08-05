@@ -1,182 +1,210 @@
-<?php
-/**
- * CryptX General Settings Tab Template
- *
- * @var array $options
- * @var array $applyTo
- * @var array $decryptionType
- * @var array $javascriptLocation
- * @var string $excludedIds
- * @var bool $metaBox
- * @var bool $autolink
- * @var string $whiteList
- */
+<?php if (!defined('ABSPATH')) exit; ?>
 
-defined('ABSPATH') || exit;
-?>
+<div class="cryptx-tab-content cryptx-general-settings">
+    <table class="form-table">
 
-<h4><?php esc_html_e("General", 'cryptx'); ?></h4>
-<table class="form-table" role="presentation">
-    <!-- Apply CryptX Section -->
-    <tr>
-        <th scope="row"><?php _e("Apply CryptX to...", 'cryptx'); ?></th>
-        <td>
-            <?php foreach ($applyTo as $key => $setting): ?>
-                <label>
-                    <input type="checkbox"
-                           name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                           value="1"
-                        <?php checked($options[$key] ?? 0, 1); ?> />
-                    <?php echo esc_html($setting['label']); ?>
-                    <?php if (isset($setting['description'])): ?>
-                        <small><?php echo esc_html($setting['description']); ?></small>
-                    <?php endif; ?>
-                </label><br/>
-            <?php endforeach; ?>
-        </td>
-    </tr>
+        <!-- Security Settings Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php _e('Encryption Mode', 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php echo $securitySettings['encryption_mode']['label']; ?></th>
+            <td>
+                <select name="cryptX_var[encryption_mode]" id="encryption_mode">
+                    <?php foreach ($securitySettings['encryption_mode']['options'] as $value => $label): ?>
+                        <option value="<?php echo esc_attr($value); ?>" <?php selected($securitySettings['encryption_mode']['value'], $value); ?>>
+                            <?php echo esc_html($label); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="description">
+                    <?php echo $securitySettings['encryption_mode']['description']; ?>
+                    <br/>
+                    <strong><?php _e('Legacy:', 'cryptx'); ?></strong> <?php _e('Uses the original CryptX encryption algorithm for backward compatibility.', 'cryptx'); ?><br/>
+                    <strong><?php _e('Secure:', 'cryptx'); ?></strong> <?php _e('Uses modern AES-256-GCM encryption with PBKDF2 key derivation for enhanced security.', 'cryptx'); ?>
+                </p>
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+                <!-- Hidden checkbox that gets set based on the dropdown -->
+                <input type="hidden" name="cryptX_var[use_secure_encryption]" id="use_secure_encryption"
+                       value="<?php echo $securitySettings['use_secure_encryption']['value']; ?>" />
+            </td>
+        </tr>
 
-    <!-- RSS Feed Section -->
-    <tr>
-        <th scope="row" colspan="2">
-            <label>
-                <input name="cryptX_var[disable_rss]"
-                       type="checkbox"
-                       value="1"
-                    <?php checked($options['disable_rss'] ?? true, 1); ?> />
-                <?php esc_html_e("Disable CryptX in RSS feeds", 'cryptx'); ?>
-            </label>
-            <p class="description">
-                <?php esc_html_e("When enabled, email addresses in RSS feeds will not be encrypted.", 'cryptx'); ?>
-            </p>
-        </th>
-    </tr>
+        <!-- Separator -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php _e('General Settings', 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+        <!-- Apply CryptX to Section -->
+        <tr>
+            <th scope="row"><?php _e('Apply CryptX to', 'cryptx'); ?></th>
+            <td>
+                <fieldset>
+                    <?php foreach ($applyTo as $key => $setting): ?>
+                        <label for="<?php echo esc_attr($key); ?>">
+                            <input type="hidden" name="cryptX_var[<?php echo esc_attr($key); ?>]" value="0" />
+                            <input type="checkbox"
+                                   id="<?php echo esc_attr($key); ?>"
+                                   name="cryptX_var[<?php echo esc_attr($key); ?>]"
+                                   value="1"
+                                <?php checked($options[$key] ?? 0, 1); ?> />
+                            <?php echo esc_html($setting['label']); ?>
+                            <?php if (isset($setting['description'])): ?>
+                                <span class="description"><?php echo esc_html($setting['description']); ?></span>
+                            <?php endif; ?>
+                        </label><br />
+                    <?php endforeach; ?>
+                </fieldset>
+            </td>
+        </tr>
 
-    <!-- Excluded IDs Section -->
-    <tr>
-        <th scope="row"><?php esc_html_e("Excluded ID's...", 'cryptx'); ?></th>
-        <td>
-            <input name="cryptX_var[excludedIDs]"
-                   type="text"
-                   value="<?php echo esc_attr($excludedIds); ?>"
-                   class="regular-text" />
-            <p class="description">
-                <?php esc_html_e("Enter all Page/Post ID's to exclude from CryptX as comma separated list.", 'cryptx'); ?>
-            </p>
-            <label>
-                <input name="cryptX_var[metaBox]"
-                       type="checkbox"
-                       value="1"
-                    <?php checked($metaBox, 1); ?> />
-                <?php esc_html_e("Enable the CryptX Widget on editing a post or page.", 'cryptx'); ?>
-            </label>
-        </td>
-    </tr>
+        <!-- Decryption Type -->
+        <tr>
+            <th scope="row"><?php _e('Decryption type', 'cryptx'); ?></th>
+            <td>
+                <fieldset>
+                    <?php foreach ($decryptionType as $key => $setting): ?>
+                        <label for="java_<?php echo esc_attr($key); ?>">
+                            <input type="radio"
+                                   id="java_<?php echo esc_attr($key); ?>"
+                                   name="cryptX_var[java]"
+                                   value="<?php echo esc_attr($setting['value']); ?>"
+                                <?php checked($options['java'] ?? 1, $setting['value']); ?> />
+                            <?php echo $setting['label']; ?>
+                        </label><br />
+                    <?php endforeach; ?>
+                </fieldset>
+            </td>
+        </tr>
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+        <!-- JavaScript Location -->
+        <tr>
+            <th scope="row"><?php _e('Javascript location', 'cryptx'); ?></th>
+            <td>
+                <fieldset>
+                    <?php foreach ($javascriptLocation as $key => $setting): ?>
+                        <label for="load_java_<?php echo esc_attr($key); ?>">
+                            <input type="radio"
+                                   id="load_java_<?php echo esc_attr($key); ?>"
+                                   name="cryptX_var[load_java]"
+                                   value="<?php echo esc_attr($setting['value']); ?>"
+                                <?php checked($options['load_java'] ?? 1, $setting['value']); ?> />
+                            <?php echo $setting['label']; ?>
+                        </label><br />
+                    <?php endforeach; ?>
+                </fieldset>
+            </td>
+        </tr>
 
-    <!-- Decryption Type Section -->
-    <tr>
-        <th scope="row"><?php esc_html_e("Type of decryption", 'cryptx'); ?></th>
-        <td>
-            <?php foreach ($decryptionType as $type): ?>
-                <label>
-                    <input name="cryptX_var[java]"
-                           type="radio"
-                           value="<?php echo esc_attr($type['value']); ?>"
-                           <?php checked($options['java'], $type['value']); ?> />
-                    <?php echo esc_html($type['label']); ?>
-                </label><br />
-            <?php endforeach; ?>
-        </td>
-    </tr>
+        <!-- Additional Options -->
+        <tr>
+            <th scope="row"><?php _e('Additional options', 'cryptx'); ?></th>
+            <td>
+                <fieldset>
+                    <label for="autolink">
+                        <input type="hidden" name="cryptX_var[autolink]" value="0" />
+                        <input type="checkbox"
+                               id="autolink"
+                               name="cryptX_var[autolink]"
+                               value="1"
+                            <?php checked($options['autolink'] ?? 0, 1); ?> />
+                        <?php _e('Automatically add a link to non-linked email addresses.', 'cryptx'); ?>
+                    </label><br />
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+                    <label for="metaBox">
+                        <input type="hidden" name="cryptX_var[metaBox]" value="0" />
+                        <input type="checkbox"
+                               id="metaBox"
+                               name="cryptX_var[metaBox]"
+                               value="1"
+                            <?php checked($options['metaBox'] ?? 0, 1); ?> />
+                        <?php _e('Show the "Disable CryptX" checkbox in the post editor.', 'cryptx'); ?>
+                    </label><br />
 
-    <!-- JavaScript Location Section -->
-    <tr>
-        <th scope="row"><?php esc_html_e("Where to load the needed javascript...", 'cryptx'); ?></th>
-        <td>
-            <?php foreach ($javascriptLocation as $location): ?>
-                <label>
-                    <input name="cryptX_var[load_java]"
-                           type="radio"
-                           value="<?php echo esc_attr($location['value']); ?>"
-                        <?php //checked(get_option('load_java'), $location['value']); ?>
-                        <?php checked($options['load_java'], $location['value']); ?> />
-                    <?php echo wp_kses($location['label'], ['b' => []]); ?>
-                </label><br />
-            <?php endforeach; ?>
-        </td>
-    </tr>
+                    <label for="disable_rss">
+                        <input type="hidden" name="cryptX_var[disable_rss]" value="0" />
+                        <input type="checkbox"
+                               id="disable_rss"
+                               name="cryptX_var[disable_rss]"
+                               value="1"
+                            <?php checked($options['disable_rss'] ?? 1, 1); ?> />
+                        <?php _e('Disable CryptX in RSS feeds.', 'cryptx'); ?>
+                    </label>
+                </fieldset>
+            </td>
+        </tr>
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+        <!-- Excluded Post IDs -->
+        <tr>
+            <th scope="row">
+                <label for="excludedIDs"><?php _e('Excluded posts/pages IDs', 'cryptx'); ?></label>
+            </th>
+            <td>
+                <input type="text"
+                       id="excludedIDs"
+                       name="cryptX_var[excludedIDs]"
+                       value="<?php echo esc_attr($options['excludedIDs'] ?? ''); ?>"
+                       class="regular-text" />
+                <p class="description">
+                    <?php _e('Comma-separated list of post/page IDs where CryptX should be disabled.', 'cryptx'); ?>
+                </p>
+            </td>
+        </tr>
 
-    <!-- Autolink Section -->
-    <tr>
-        <th scope="row" colspan="2">
-            <label>
-                <input name="cryptX_var[autolink]"
-                       type="checkbox"
-                       value="1"
-                    <?php checked($autolink, 1); ?> />
-                <?php esc_html_e("Add mailto to all unlinked email addresses", 'cryptx'); ?>
-            </label>
-        </th>
-    </tr>
+        <!-- Whitelist -->
+        <tr>
+            <th scope="row">
+                <label for="whiteList"><?php _e('Whitelist', 'cryptx'); ?></label>
+            </th>
+            <td>
+                <input type="text"
+                       id="whiteList"
+                       name="cryptX_var[whiteList]"
+                       value="<?php echo esc_attr($options['whiteList'] ?? 'jpeg,jpg,png,gif'); ?>"
+                       class="regular-text" />
+                <p class="description">
+                    <?php _e('Comma-separated list of file extensions that should not be encrypted when found in email addresses.', 'cryptx'); ?>
+                </p>
+            </td>
+        </tr>
+    </table>
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+    <!-- Submit Button -->
+    <p class="submit">
+        <input type="submit"
+               name="cryptX_save_general_settings"
+               class="button-primary"
+               value="<?php _e('Save Changes', 'cryptx'); ?>" />
+        <input type="submit"
+               name="cryptX_var_reset"
+               class="button-secondary"
+               value="<?php _e('Reset to Defaults', 'cryptx'); ?>"
+               onclick="return confirm('<?php _e('Are you sure you want to reset all settings to defaults?', 'cryptx'); ?>');" />
+    </p>
+</div>
 
-    <!-- Whitelist Section -->
-    <tr>
-        <th scope="row"><?php esc_html_e("Whitelist of extensions", 'cryptx'); ?></th>
-        <td>
-            <input name="cryptX_var[whiteList]"
-                   type="text"
-                   value="<?php echo esc_attr($whiteList); ?>"
-                   class="regular-text" />
-            <p class="description">
-                <?php echo wp_kses(
-                    __("<strong>This is a workaround for the 'retina issue'.</strong><br/>You can provide a comma separated list of extensions like 'jpeg,jpg,png,gif' which will be ignored by CryptX.", 'cryptx'),
-                    ['strong' => [], 'br' => []]
-                ); ?>
-            </p>
-        </td>
-    </tr>
+<script>
+    // Auto-sync the dropdown with the hidden checkbox
+    document.addEventListener('DOMContentLoaded', function() {
+        const encryptionModeSelect = document.getElementById('encryption_mode');
+        const useSecureEncryption = document.getElementById('use_secure_encryption');
 
-    <tr class="spacer">
-        <td colspan="2"><hr></td>
-    </tr>
+        if (encryptionModeSelect && useSecureEncryption) {
+            // Set initial value
+            useSecureEncryption.value = (encryptionModeSelect.value === 'secure') ? '1' : '0';
 
-    <!-- Reset Options Section -->
-    <tr>
-        <th scope="row" colspan="2" class="warning">
-            <label>
-                <input name="cryptX_var_reset"
-                       type="checkbox"
-                       value="1" />
-                <?php esc_html_e("Reset CryptX options to defaults. Use it carefully and at your own risk. All changes will be deleted!", 'cryptx'); ?>
-            </label>
-        </th>
-    </tr>
-</table>
-
-<input type="hidden" name="cryptX_save_general_settings" value="true">
-<?php submit_button(__('Save General Settings', 'cryptx'), 'primary', 'cryptX_save_general_settings'); ?>
-
+            // Update on change
+            encryptionModeSelect.addEventListener('change', function() {
+                useSecureEncryption.value = (this.value === 'secure') ? '1' : '0';
+            });
+        }
+    });
+</script>

@@ -4,16 +4,17 @@ namespace CryptX\Admin;
 
 use CryptX\Config;
 
-/**
- * Class ChangelogSettingsTab
- * Handles the changelog tab functionality in the CryptX plugin admin interface
- */
 class ChangelogSettingsTab
 {
     /**
      * @var Config Configuration instance
      */
     private Config $config;
+
+    /**
+     * Template path
+     */
+    private const TEMPLATE_PATH = CRYPTX_DIR_PATH . 'templates/admin/tabs/changelog.php';
 
     /**
      * ChangelogSettingsTab constructor.
@@ -30,29 +31,51 @@ class ChangelogSettingsTab
      */
     public function render(): void
     {
-        echo '<h4>' . esc_html__('Changelog', 'cryptx') . '</h4>';
-        $this->renderChangelogContent();
+        if ('changelog' !== $this->getActiveTab()) {
+            return;
+        }
+
+        $changelogs = $this->getChangelogData();
+        $this->renderTemplate(self::TEMPLATE_PATH, ['changelogs' => $changelogs]);
     }
 
     /**
-     * Parse and render changelog content from readme.txt
+     * Get changelog data
      */
-    private function renderChangelogContent(): void
+    private function getChangelogData(): array
     {
         $readmePath = CRYPTX_DIR_PATH . '/readme.txt';
         if (!file_exists($readmePath)) {
-            return;
+            return [];
         }
 
         $fileContents = file_get_contents($readmePath);
         if ($fileContents === false) {
-            return;
+            return [];
         }
 
-        $changelogs = $this->parseChangelog($fileContents);
-        foreach ($changelogs as $log) {
-            echo wp_kses_post("<dl>" . implode("", $log) . "</dl>");
+        return $this->parseChangelog($fileContents);
+    }
+
+    /**
+     * Render template with data
+     */
+    private function renderTemplate(string $path, array $data): void
+    {
+        if (!file_exists($path)) {
+            throw new \RuntimeException(sprintf('Template file not found: %s', $path));
         }
+
+        extract($data);
+        include $path;
+    }
+
+    /**
+     * Get active tab
+     */
+    private function getActiveTab(): string
+    {
+        return sanitize_text_field($_GET['tab'] ?? 'general');
     }
 
     /**
@@ -88,6 +111,10 @@ class ChangelogSettingsTab
         $sections = [];
 
         for ($i = 1; $i <= count($_sections); $i += 2) {
+            if (!isset($_sections[$i - 1]) || !isset($_sections[$i])) {
+                continue;
+            }
+
             $title = $_sections[$i - 1];
             $sections[str_replace(' ', '_', strtolower($title))] = [
                 'title' => $title,
@@ -110,17 +137,54 @@ class ChangelogSettingsTab
         $changelogs = [];
 
         for ($i = 1; $i <= count($_changelogs); $i += 2) {
+            if (!isset($_changelogs[$i - 1]) || !isset($_changelogs[$i])) {
+                continue;
+            }
+
             $version = $_changelogs[$i - 1];
             $content = ltrim($_changelogs[$i], "\n");
-            $content = str_replace("* ", "<li>", $content);
-            $content = str_replace("\n", " </li>\n", $content);
 
-            $changelogs[] = [
-                'version' => "<dt>" . esc_html($version) . "</dt>",
-                'content' => "<dd><ul>" . wp_kses_post($content) . "</ul></dd>"
-            ];
+            // Parse changelog items
+            $items = $this->parseChangelogItems($content);
+
+            if (!empty($items)) {
+                $changelogs[] = [
+                    'version' => $version,
+                    'items' => $items
+                ];
+            }
         }
 
         return $changelogs;
+    }
+
+    /**
+     * Parse individual changelog items
+     *
+     * @param string $content
+     * @return array
+     */
+    private function parseChangelogItems(string $content): array
+    {
+        $lines = explode("\n", $content);
+        $items = [];
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) {
+                continue;
+            }
+
+            // Remove leading asterisk and clean up
+            if (strpos($line, '* ') === 0) {
+                $line = substr($line, 2);
+            }
+
+            if (!empty($line)) {
+                $items[] = trim($line);
+            }
+        }
+
+        return $items;
     }
 }

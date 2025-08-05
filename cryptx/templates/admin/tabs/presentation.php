@@ -1,220 +1,275 @@
 <?php
 /**
- * Template for the CryptX presentation settings tab
- *
- * @var array $css CSS settings
- * @var array $linkTextOptions Link text display options
- * @var int $selectedOption Currently selected link text option
+ * CryptX Presentation Settings Tab Template
+ * Variables extracted from PresentationSettingsTab:
+ * - $css: CSS settings array
+ * - $emailReplacements: Email replacement settings
+ * - $linkTextOptions: Link text configuration options
+ * - $selectedOption: Currently selected option value
  */
-
-defined('ABSPATH') || exit;
+if (!defined('ABSPATH')) {
+    exit;
+}
 ?>
 
-    <h4><?php _e("Define CSS Options", 'cryptx'); ?></h4>
+<div class="cryptx-tab-content cryptx-presentation-settings">
     <table class="form-table">
+
+        <!-- CSS Settings Section -->
         <tr>
-            <th><label for="cryptX_var[css_id]"><?php _e("CSS ID", 'cryptx'); ?></label></th>
-            <td>
-                <input name="cryptX_var[css_id]"
-                       id="cryptX_var[css_id]"
-                       type="text"
-                       value="<?php echo esc_attr($css['id']); ?>"
-                       class="regular-text" />
-                <p class="description">
-                    <?php _e("Please be careful using this feature! IDs should be unique. You should prefer using a css class instead.", 'cryptx'); ?>
-                </p>
-            </td>
-        </tr>
-        <tr>
-            <th><label for="cryptX_var[css_class]"><?php _e("CSS Class", 'cryptx'); ?></label></th>
-            <td>
-                <input name="cryptX_var[css_class]"
-                       id="cryptX_var[css_class]"
-                       type="text"
-                       value="<?php echo esc_attr($css['class']); ?>"
-                       class="regular-text" />
-            </td>
-        </tr>
-    </table>
-
-    <h4><?php _e("Define Presentation Options", 'cryptx'); ?></h4>
-    <table class="form-table">
-        <tbody>
-        <!-- Character Replacement Option -->
-        <tr>
-            <td>
-                <input type="radio"
-                       name="cryptX_var[opt_linktext]"
-                       id="opt_linktext_0"
-                       value="<?php echo esc_attr($linkTextOptions['replacement']['value']); ?>"
-                    <?php checked($selectedOption, $linkTextOptions['replacement']['value']); ?> />
-            </td>
-            <th scope="row">
-                <?php foreach ($linkTextOptions['replacement']['fields'] as $key => $field): ?>
-                    <div class="cryptx-field-row">
-                        <label for="cryptX_var[<?php echo esc_attr($key); ?>]">
-                            <?php echo esc_html($field['label']); ?>
-                        </label>
-                        <input type="text"
-                               name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                               id="cryptX_var[<?php echo esc_attr($key); ?>]"
-                               value="<?php echo esc_attr($field['value']); ?>"
-                               class="regular-text" />
-                    </div>
-                <?php endforeach; ?>
-            </th>
-        </tr>
-
-        <tr class="spacer"><td colspan="3"><hr></td></tr>
-
-        <!-- Custom Text Option -->
-        <tr>
-            <td>
-                <input type="radio"
-                       name="cryptX_var[opt_linktext]"
-                       id="opt_linktext_1"
-                       value="<?php echo esc_attr($linkTextOptions['customText']['value']); ?>"
-                    <?php checked($selectedOption, $linkTextOptions['customText']['value']); ?> />
-            </td>
-            <th>
-                <?php foreach ($linkTextOptions['customText']['fields'] as $key => $field): ?>
-                    <label for="cryptX_var[<?php echo esc_attr($key); ?>]">
-                        <?php echo esc_html($field['label']); ?>
-                    </label>
-                    <input type="text"
-                           name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                           id="cryptX_var[<?php echo esc_attr($key); ?>]"
-                           value="<?php echo esc_attr($field['value']); ?>"
-                           class="regular-text" />
-                <?php endforeach; ?>
-            </th>
-        </tr>
-
-        <tr class="spacer"><td colspan="3"><hr></td></tr>
-
-        <!-- External Image Option -->
-        <tr>
-            <td>
-                <input type="radio"
-                       name="cryptX_var[opt_linktext]"
-                       id="opt_linktext_2"
-                       value="<?php echo esc_attr($linkTextOptions['externalImage']['value']); ?>"
-                    <?php checked($selectedOption, $linkTextOptions['externalImage']['value']); ?> />
-            </td>
-            <th>
-                <?php foreach ($linkTextOptions['externalImage']['fields'] as $key => $field): ?>
-                    <div class="cryptx-field-row">
-                        <label for="cryptX_var[<?php echo esc_attr($key); ?>]">
-                            <?php echo esc_html($field['label']); ?>
-                        </label>
-                        <input type="text"
-                               name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                               id="cryptX_var[<?php echo esc_attr($key); ?>]"
-                               value="<?php echo esc_attr($field['value']); ?>"
-                               class="regular-text" />
-                    </div>
-                <?php endforeach; ?>
-            </th>
-        </tr>
-
-        <tr class="spacer"><td colspan="3"><hr></td></tr>
-
-        <!-- Uploaded Image Option -->
-        <tr>
-            <td>
-                <input type="radio"
-                       name="cryptX_var[opt_linktext]"
-                       id="opt_linktext_3"
-                       value="<?php echo esc_attr($linkTextOptions['uploadedImage']['value']); ?>"
-                    <?php checked($selectedOption, $linkTextOptions['uploadedImage']['value']); ?> />
-            </td>
-            <th>
-                <label for="upload_image_button"><?php _e("Select an uploaded image", 'cryptx'); ?></label>
-            </th>
-            <td>
-                <input id="upload_image_button" type="button" class="button" value="<?php esc_attr_e('Upload image'); ?>" />
-                <input id="remove_image_button" type="button" class="button button-link-delete hidden" value="<?php esc_attr_e('Delete image'); ?>" />
-                <span id="opt_linktext4_notice"><?php _e("You have to upload an image first before this option can be activated.", 'cryptx'); ?></span>
-                <input type="hidden"
-                       name="cryptX_var[alt_uploadedimage]"
-                       id="image_attachment_id"
-                       value="<?php echo esc_attr($linkTextOptions['uploadedImage']['fields']['alt_uploadedimage']['value']); ?>">
-                <div>
-                    <img id="image-preview" src="<?php echo esc_url(wp_get_attachment_url($linkTextOptions['uploadedImage']['fields']['alt_uploadedimage']['value'])); ?>">
-                </div>
-                <label for="cryptX_var[alt_linkimage_title]">
-                    <?php echo esc_html($linkTextOptions['uploadedImage']['fields']['alt_linkimage_title']['label']); ?>
-                </label>
-                <input type="text"
-                       name="cryptX_var[alt_linkimage_title]"
-                       value="<?php echo esc_attr($linkTextOptions['uploadedImage']['fields']['alt_linkimage_title']['value']); ?>"
-                       class="regular-text" />
-            </td>
-        </tr>
-
-        <tr class="spacer"><td colspan="3"><hr></td></tr>
-
-        <!-- Text Scrambling Option -->
-        <tr>
-            <td>
-                <input type="radio"
-                       name="cryptX_var[opt_linktext]"
-                       id="opt_linktext_4"
-                       value="<?php echo esc_attr($linkTextOptions['scrambled']['value']); ?>"
-                    <?php checked($selectedOption, $linkTextOptions['scrambled']['value']); ?> />
-            </td>
             <th colspan="2">
-                <?php echo esc_html($linkTextOptions['scrambled']['label']); ?>
-                <small><?php _e("Try it and look at your site and check the html source!", 'cryptx'); ?></small>
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php _e('CSS Settings', 'cryptx'); ?>
+                </h3>
             </th>
         </tr>
-
-        <tr class="spacer"><td colspan="3"><hr></td></tr>
-
-        <!-- PNG Image Conversion Option -->
         <tr>
+            <th scope="row"><?php _e("CSS-ID", 'cryptx'); ?></th>
             <td>
-                <input type="radio"
-                       name="cryptX_var[opt_linktext]"
-                       id="opt_linktext_5"
-                       value="<?php echo esc_attr($linkTextOptions['pngImage']['value']); ?>"
-                    <?php checked($selectedOption, $linkTextOptions['pngImage']['value']); ?> />
-            </td>
-            <th><?php echo esc_html($linkTextOptions['pngImage']['label']); ?></th>
-            <td>
-                <?php foreach ($linkTextOptions['pngImage']['fields'] as $key => $field): ?>
-                    <div class="cryptx-field-row">
-                        <label for="cryptX_var[<?php echo esc_attr($key); ?>]">
-                            <?php echo esc_html($field['label']); ?>
-                        </label>
-                        <?php if ($key === 'c2i_font'): ?>
-                            <select name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                                    id="cryptX_var[<?php echo esc_attr($key); ?>]">
-                                <?php foreach ($field['options'] as $value => $label): ?>
-                                    <option value="<?php echo esc_attr($value); ?>"
-                                        <?php selected($field['value'], $value); ?>>
-                                        <?php echo esc_html($label); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        <?php elseif ($key === 'c2i_fontSize'): ?>
-                            <input type="number"
-                                   name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                                   id="cryptX_var[<?php echo esc_attr($key); ?>]"
-                                   value="<?php echo esc_attr($field['value']); ?>"
-                                   class="small-text" />
-                        <?php else: ?>
-                            <input type="text"
-                                   name="cryptX_var[<?php echo esc_attr($key); ?>]"
-                                   id="cryptX_var[<?php echo esc_attr($key); ?>]"
-                                   value="<?php echo esc_attr($field['value']); ?>"
-                                   class="color-field" />
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
+                <input name="cryptX_var[css_id]" id="css_id" value="<?php echo esc_attr($css['id']); ?>" type="text" class="regular-text" />
+                <p class="description"><?php _e("Please be careful using this feature! IDs should be unique. You should prefer using a CSS class instead.", 'cryptx'); ?></p>
             </td>
         </tr>
-        </tbody>
+        <tr>
+            <th scope="row"><?php _e("CSS-Class", 'cryptx'); ?></th>
+            <td>
+                <input name="cryptX_var[css_class]" id="css_class" value="<?php echo esc_attr($css['class']); ?>" type="text" class="regular-text" />
+                <p class="description"><?php _e("Add custom CSS class to encrypted email links.", 'cryptx'); ?></p>
+            </td>
+        </tr>
+
+        <!-- Link Text Options Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php _e('Link Text Options', 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php _e('Presentation Method', 'cryptx'); ?></th>
+            <td>
+                <fieldset>
+                    <!-- Option 0: Replacement Text -->
+                    <label>
+                        <input name="cryptX_var[opt_linktext]" type="radio" value="0" <?php checked($selectedOption, 0); ?> />
+                        <strong><?php _e("Show Email with text replacement", 'cryptx'); ?></strong>
+                    </label>
+                    <div style="margin-left: 25px; margin-top: 10px; margin-bottom: 20px;">
+                        <table class="form-table" style="margin: 0;">
+                            <?php foreach ($linkTextOptions['replacement']['fields'] as $field => $config): ?>
+                                <tr>
+                                    <th scope="row" style="padding-left: 0;"><?php echo $config['label']; ?></th>
+                                    <td style="padding-left: 10px;">
+                                        <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                               value="<?php echo esc_attr($config['value']); ?>"
+                                               type="text" class="regular-text" />
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </div>
+
+                    <!-- Option 1: Custom Text -->
+                    <label>
+                        <input name="cryptX_var[opt_linktext]" type="radio" value="1" <?php checked($selectedOption, 1); ?> />
+                        <strong><?php _e("Show custom text", 'cryptx'); ?></strong>
+                    </label>
+                    <div style="margin-left: 25px; margin-top: 10px; margin-bottom: 20px;">
+                        <table class="form-table" style="margin: 0;">
+                            <?php foreach ($linkTextOptions['customText']['fields'] as $field => $config): ?>
+                                <tr>
+                                    <th scope="row" style="padding-left: 0;"><?php echo $config['label']; ?></th>
+                                    <td style="padding-left: 10px;">
+                                        <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                               value="<?php echo esc_attr($config['value']); ?>"
+                                               type="text" class="regular-text" />
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </div>
+
+                    <!-- Option 2: External Image -->
+                    <label>
+                        <input name="cryptX_var[opt_linktext]" type="radio" value="2" <?php checked($selectedOption, 2); ?> />
+                        <strong><?php _e("Show external image", 'cryptx'); ?></strong>
+                    </label>
+                    <div style="margin-left: 25px; margin-top: 10px; margin-bottom: 20px;">
+                        <table class="form-table" style="margin: 0;">
+                            <?php foreach ($linkTextOptions['externalImage']['fields'] as $field => $config): ?>
+                                <tr>
+                                    <th scope="row" style="padding-left: 0;"><?php echo $config['label']; ?></th>
+                                    <td style="padding-left: 10px;">
+                                        <?php if ($field === 'alt_linkimage'): ?>
+                                            <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                                   value="<?php echo esc_attr($config['value']); ?>"
+                                                   type="url" class="regular-text"
+                                                   placeholder="https://example.com/image.png" />
+                                        <?php else: ?>
+                                            <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                                   value="<?php echo esc_attr($config['value']); ?>"
+                                                   type="text" class="regular-text" />
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </div>
+
+                    <!-- Option 3: Uploaded Image -->
+                    <label>
+                        <input name="cryptX_var[opt_linktext]" type="radio" value="3" <?php checked($selectedOption, 3); ?> />
+                        <strong><?php _e("Show uploaded image", 'cryptx'); ?></strong>
+                    </label>
+                    <div style="margin-left: 25px; margin-top: 10px; margin-bottom: 20px;">
+                        <table class="form-table" style="margin: 0;">
+                            <tr>
+                                <th scope="row" style="padding-left: 0;"><?php _e("Select Image", 'cryptx'); ?></th>
+                                <td style="padding-left: 10px;">
+                                    <input name="cryptX_var[alt_uploadedimage]" id="alt_uploadedimage"
+                                           value="<?php echo esc_attr($linkTextOptions['uploadedImage']['fields']['alt_uploadedimage']['value']); ?>"
+                                           type="hidden" />
+                                    <button type="button" class="button" id="upload_image_button">
+                                        <?php _e("Choose Image", 'cryptx'); ?>
+                                    </button>
+                                    <div id="image_preview" style="margin-top: 10px;"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row" style="padding-left: 0;">
+                                    <?php echo $linkTextOptions['uploadedImage']['fields']['alt_linkimage_title']['label']; ?>
+                                </th>
+                                <td style="padding-left: 10px;">
+                                    <input name="cryptX_var[alt_linkimage_title]"
+                                           value="<?php echo esc_attr($linkTextOptions['uploadedImage']['fields']['alt_linkimage_title']['value']); ?>"
+                                           type="text" class="regular-text" />
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Option 4: Scrambled Text -->
+                    <label>
+                        <input name="cryptX_var[opt_linktext]" type="radio" value="4" <?php checked($selectedOption, 4); ?> />
+                        <strong><?php echo $linkTextOptions['scrambled']['label']; ?></strong>
+                    </label><br/><br/>
+
+                    <!-- Option 5: PNG Image -->
+                    <label>
+                        <input name="cryptX_var[opt_linktext]" type="radio" value="5" <?php checked($selectedOption, 5); ?> />
+                        <strong><?php echo $linkTextOptions['pngImage']['label']; ?></strong>
+                    </label>
+                    <div style="margin-left: 25px; margin-top: 10px; margin-bottom: 20px;">
+                        <table class="form-table" style="margin: 0;">
+                            <?php foreach ($linkTextOptions['pngImage']['fields'] as $field => $config): ?>
+                                <tr>
+                                    <th scope="row" style="padding-left: 0;"><?php echo $config['label']; ?></th>
+                                    <td style="padding-left: 10px;">
+                                        <?php if ($field === 'c2i_font'): ?>
+                                            <select name="cryptX_var[<?php echo esc_attr($field); ?>]">
+                                                <?php foreach ($config['options'] as $value => $label): ?>
+                                                    <option value="<?php echo esc_attr($value); ?>" <?php selected($config['value'], $value); ?>>
+                                                        <?php echo esc_html($label); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        <?php elseif ($field === 'c2i_fontRGB'): ?>
+                                            <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                                   id="c2i_fontRGB"
+                                                   value="<?php echo esc_attr($config['value']); ?>"
+                                                   type="text" class="color-field" />
+                                        <?php elseif ($field === 'c2i_fontSize'): ?>
+                                            <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                                   value="<?php echo esc_attr($config['value']); ?>"
+                                                   type="number" min="8" max="72" />
+                                        <?php else: ?>
+                                            <input name="cryptX_var[<?php echo esc_attr($field); ?>]"
+                                                   value="<?php echo esc_attr($config['value']); ?>"
+                                                   type="text" class="regular-text" />
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </div>
+                </fieldset>
+            </td>
+        </tr>
     </table>
 
-<?php submit_button(__('Save Presentation Settings', 'cryptx'), 'primary', 'cryptX_save_presentation_settings'); ?>
+    <!-- Submit Button -->
+    <p class="submit">
+        <input type="submit"
+               name="cryptX_save_presentation_settings"
+               class="button-primary"
+               value="<?php _e('Save Changes', 'cryptx'); ?>" />
+        <input type="submit"
+               name="cryptX_var_reset"
+               class="button-secondary"
+               value="<?php _e('Reset to Defaults', 'cryptx'); ?>"
+               onclick="return confirm('<?php _e('Are you sure you want to reset all presentation settings to defaults?', 'cryptx'); ?>');" />
+    </p>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize WordPress Color Picker
+        if (typeof jQuery !== 'undefined' && jQuery.fn.wpColorPicker) {
+            jQuery('.color-field').wpColorPicker();
+        }
+
+        // Handle image upload functionality
+        const uploadButton = document.getElementById('upload_image_button');
+        const imageField = document.getElementById('alt_uploadedimage');
+        const imagePreview = document.getElementById('image_preview');
+
+        if (uploadButton && typeof wp !== 'undefined' && wp.media) {
+            let mediaUploader;
+
+            uploadButton.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                if (mediaUploader) {
+                    mediaUploader.open();
+                    return;
+                }
+
+                mediaUploader = wp.media({
+                    title: '<?php _e("Choose Image", "cryptx"); ?>',
+                    button: {
+                        text: '<?php _e("Choose Image", "cryptx"); ?>'
+                    },
+                    multiple: false,
+                    library: {
+                        type: 'image'
+                    }
+                });
+
+                mediaUploader.on('select', function() {
+                    const attachment = mediaUploader.state().get('selection').first().toJSON();
+                    imageField.value = attachment.id;
+
+                    if (attachment.sizes && attachment.sizes.thumbnail) {
+                        imagePreview.innerHTML = '<img src="' + attachment.sizes.thumbnail.url + '" style="max-width: 150px; height: auto;" />';
+                    } else {
+                        imagePreview.innerHTML = '<img src="' + attachment.url + '" style="max-width: 150px; height: auto;" />';
+                    }
+                });
+
+                mediaUploader.open();
+            });
+
+            // Show current image if one is selected
+            if (imageField.value && imageField.value !== '0') {
+                wp.media.attachment(imageField.value).fetch().then(function(attachment) {
+                    if (attachment.attributes.sizes && attachment.attributes.sizes.thumbnail) {
+                        imagePreview.innerHTML = '<img src="' + attachment.attributes.sizes.thumbnail.url + '" style="max-width: 150px; height: auto;" />';
+                    } else {
+                        imagePreview.innerHTML = '<img src="' + attachment.attributes.url + '" style="max-width: 150px; height: auto;" />';
+                    }
+                });
+            }
+        }
+    });
+</script>

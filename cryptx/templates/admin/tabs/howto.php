@@ -10,129 +10,146 @@ if (!defined('ABSPATH')) {
 }
 ?>
 
-<h4><?php esc_html_e("How to use CryptX in your Template", 'cryptx'); ?></h4>
-<div class="cryptx-documentation">
-    <p>The <code>[cryptx]</code> shortcode allows you to protect email addresses from spam bots in your WordPress posts
-        and pages, even when CryptX is disabled globally for that content.</p>
-
-    <h3>Basic Usage</h3>
-    <pre><code>[cryptx]user@example.com[/cryptx]</code></pre>
-
-    <h3>Advanced Usage</h3>
-    <pre><code>[cryptx linktext="Contact Us" subject="Website Inquiry"]user@example.com[/cryptx]</code></pre>
-
-    <h4>Available Attributes</h4>
-    <table class="cryptx-attributes">
-        <thead>
+<div class="cryptx-tab-content cryptx-howto-settings">
+    <table class="form-table">
+        <!-- Shortcode Usage Section -->
         <tr>
-            <th>Attribute</th>
-            <th>Description</th>
-            <th>Default</th>
-            <th>Example</th>
-        </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td><code>linktext</code></td>
-            <td>Custom text to display instead of the email address</td>
-            <td>Email address</td>
-            <td><code>linktext="Contact Us"</code></td>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php esc_html_e("How to use CryptX Shortcode", 'cryptx'); ?>
+                </h3>
+            </th>
         </tr>
         <tr>
-            <td><code>subject</code></td>
-            <td>Pre-defined subject line for the email</td>
-            <td>None</td>
-            <td><code>subject="Website Inquiry"</code></td>
+            <th scope="row"><?php esc_html_e("Basic Usage", 'cryptx'); ?></th>
+            <td>
+                <p><?php esc_html_e("The [cryptx] shortcode allows you to protect email addresses from spam bots in your WordPress posts and pages, even when CryptX is disabled globally for that content.", 'cryptx'); ?></p>
+                <pre><code>[cryptx]user@example.com[/cryptx]</code></pre>
+                <p class="description"><?php esc_html_e("Displays: A protected version of user@example.com", 'cryptx'); ?></p>
+            </td>
         </tr>
-        </tbody>
-    </table>
+        <tr>
+            <th scope="row"><?php esc_html_e("Advanced Usage", 'cryptx'); ?></th>
+            <td>
+                <pre><code>[cryptx linktext="Contact Us" subject="Website Inquiry"]user@example.com[/cryptx]</code></pre>
+                <p class="description"><?php esc_html_e("Creates a link with custom text and pre-filled subject line.", 'cryptx'); ?></p>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("Available Attributes", 'cryptx'); ?></th>
+            <td>
+                <table class="widefat striped">
+                    <thead>
+                    <tr>
+                        <th><?php esc_html_e("Attribute", 'cryptx'); ?></th>
+                        <th><?php esc_html_e("Description", 'cryptx'); ?></th>
+                        <th><?php esc_html_e("Default", 'cryptx'); ?></th>
+                        <th><?php esc_html_e("Example", 'cryptx'); ?></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td><code>linktext</code></td>
+                        <td><?php esc_html_e("Custom text to display instead of the email address", 'cryptx'); ?></td>
+                        <td><?php esc_html_e("Email address", 'cryptx'); ?></td>
+                        <td><code>linktext="Contact Us"</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>subject</code></td>
+                        <td><?php esc_html_e("Pre-defined subject line for the email", 'cryptx'); ?></td>
+                        <td><?php esc_html_e("None", 'cryptx'); ?></td>
+                        <td><code>subject="Website Inquiry"</code></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </td>
+        </tr>
 
-    <h3>Examples</h3>
+        <!-- Examples Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php esc_html_e("Examples", 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("1. Basic Email Protection", 'cryptx'); ?></th>
+            <td>
+                <pre><code>[cryptx]user@example.com[/cryptx]</code></pre>
+                <p class="description"><?php esc_html_e("Displays: A protected version of user@example.com", 'cryptx'); ?></p>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("2. Custom Link Text", 'cryptx'); ?></th>
+            <td>
+                <pre><code>[cryptx linktext="Send us an email"]user@example.com[/cryptx]</code></pre>
+                <p class="description"><?php esc_html_e("Displays: \"Send us an email\" as a protected link", 'cryptx'); ?></p>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("3. With Subject Line", 'cryptx'); ?></th>
+            <td>
+                <pre><code>[cryptx subject="Product Inquiry"]sales@example.com[/cryptx]</code></pre>
+                <p class="description"><?php esc_html_e("Creates a link that opens the email client with a pre-filled subject line", 'cryptx'); ?></p>
+            </td>
+        </tr>
 
-    <h4>1. Basic Email Protection</h4>
-    <pre><code>[cryptx]user@example.com[/cryptx]</code></pre>
-    <p>Displays: A protected version of user@example.com</p>
+        <!-- Best Practices Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php esc_html_e("Best Practices", 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("Recommendations", 'cryptx'); ?></th>
+            <td>
+                <ul>
+                    <li><?php esc_html_e("Use the shortcode when you need to protect individual email addresses in content where CryptX is disabled globally", 'cryptx'); ?></li>
+                    <li><?php esc_html_e("Consider using custom link text for better user experience", 'cryptx'); ?></li>
+                    <li><?php esc_html_e("Use meaningful subject lines when applicable", 'cryptx'); ?></li>
+                    <li><?php esc_html_e("Don't nest shortcodes within the email address", 'cryptx'); ?></li>
+                </ul>
+            </td>
+        </tr>
 
-    <h4>2. Custom Link Text</h4>
-    <pre><code>[cryptx linktext="Send us an email"]user@example.com[/cryptx]</code></pre>
-    <p>Displays: "Send us an email" as a protected link</p>
+        <!-- JavaScript Functions Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php esc_html_e("JavaScript Functions", 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("generateDeCryptXHandler()", 'cryptx'); ?></th>
+            <td>
+                <p><?php esc_html_e("A JavaScript function that generates an encrypted handler for email address protection. This function creates a special URL format that encrypts email addresses to protect them from spam bots while keeping them clickable for real users.", 'cryptx'); ?></p>
 
-    <h4>3. With Subject Line</h4>
-    <pre><code>[cryptx subject="Product Inquiry"]sales@example.com[/cryptx]</code></pre>
-    <p>Creates a link that opens the email client with a pre-filled subject line</p>
+                <h4><?php esc_html_e("Parameters", 'cryptx'); ?></h4>
+                <ul>
+                    <li><code>emailAddress</code> (string) - <?php esc_html_e("The email address to encrypt (e.g., \"user@example.com\")", 'cryptx'); ?></li>
+                </ul>
 
-    <h3>Best Practices</h3>
-    <ul>
-        <li>Use the shortcode when you need to protect individual email addresses in content where CryptX is disabled
-            globally
-        </li>
-        <li>Consider using custom link text for better user experience</li>
-        <li>Use meaningful subject lines when applicable</li>
-        <li>Don't nest shortcodes within the email address</li>
-    </ul>
+                <h4><?php esc_html_e("Returns", 'cryptx'); ?></h4>
+                <ul>
+                    <li><?php esc_html_e("(string) A JavaScript handler string in the format \"javascript:DeCryptX('encrypted_string')\"", 'cryptx'); ?></li>
+                </ul>
 
-    <h3>Troubleshooting</h3>
-    <ul>
-        <li><strong>Email Not Protected:</strong> Ensure the shortcode syntax is correct with both opening and closing
-            tags
-        </li>
-        <li><strong>Link Not Working:</strong> Verify that JavaScript is enabled in the browser</li>
-        <li><strong>Strange Characters:</strong> Make sure the email address format is valid</li>
-    </ul>
-
-    <div class="cryptx-notes">
-        <h4>Important Notes</h4>
-        <ul>
-            <li>The shortcode works independently of global CryptX settings</li>
-            <li>JavaScript must be enabled in the visitor's browser</li>
-            <li>Email addresses are protected using JavaScript encryption</li>
-        </ul>
-    </div>
-
-    <div class="cryptx-version">
-        <p><strong>Available since:</strong> Version 2.7</p>
-    </div>
-</div>
-
-<h4><?php esc_html_e("How to use CryptX javascript function", 'cryptx'); ?></h4>
-<div class="cryptx-documentation">
-    <h2>JavaScript Email Protection Functions</h2>
-
-    <p>This section describes the JavaScript functions available for email protection in CryptX.</p>
-
-    <h3>generateDeCryptXHandler()</h3>
-
-    <p>A JavaScript function that generates an encrypted handler for email address protection.
-        This function creates a special URL format that encrypts email addresses to protect them
-        from spam bots while keeping them clickable for real users.</p>
-
-    <h4>Parameters</h4>
-    <ul>
-        <li><code>emailAddress</code> (string) - The email address to encrypt (e.g., "user@example.com")</li>
-    </ul>
-
-    <h4>Returns</h4>
-    <ul>
-        <li>(string) A JavaScript handler string in the format "javascript:DeCryptX('encrypted_string')"</li>
-    </ul>
-
-    <h4>Examples</h4>
-
-    <p>Basic usage in JavaScript:</p>
-    <pre><code class="language-javascript">const handler = generateDeCryptXHandler("user@example.com");
+                <h4><?php esc_html_e("Basic Usage", 'cryptx'); ?></h4>
+                <pre><code class="language-javascript">const handler = generateDeCryptXHandler("user@example.com");
 // Returns: javascript:DeCryptX('1A2B3C...')</code></pre>
 
-    <p>Creating a protected link:</p>
-    <pre><code class="language-javascript">const link = document.createElement('a');
+                <h4><?php esc_html_e("Creating a Protected Link", 'cryptx'); ?></h4>
+                <pre><code class="language-javascript">const link = document.createElement('a');
 link.href = generateDeCryptXHandler('user@example.com');
 link.textContent = "Contact Us";
 document.body.appendChild(link);</code></pre>
 
-    <p>Direct HTML usage:</p>
-    <pre><code class="language-html">&lt;a href="javascript:generateDeCryptXHandler('user@example.com')"&gt;Contact Us&lt;/a&gt;</code></pre>
-
-    <h4>Implementation with Error Handling</h4>
-    <pre><code class="language-javascript">function createSafeEmailLink(email, linkText) {
+                <h4><?php esc_html_e("Implementation with Error Handling", 'cryptx'); ?></h4>
+                <pre><code class="language-javascript">function createSafeEmailLink(email, linkText) {
     try {
         // Input validation
         if (!email || typeof email !== 'string') {
@@ -154,128 +171,109 @@ document.body.appendChild(link);</code></pre>
         return null;
     }
 }</code></pre>
+            </td>
+        </tr>
 
-    <h4>Important Notes</h4>
+        <!-- Important Notes Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php esc_html_e("Important Notes", 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("Requirements", 'cryptx'); ?></th>
+            <td>
+                <ul>
+                    <li><?php esc_html_e("The shortcode works independently of global CryptX settings", 'cryptx'); ?></li>
+                    <li><?php esc_html_e("JavaScript must be enabled in the visitor's browser", 'cryptx'); ?></li>
+                    <li><?php esc_html_e("Email addresses are protected using JavaScript encryption", 'cryptx'); ?></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("Browser Support", 'cryptx'); ?></th>
+            <td>
+                <ul>
+                    <li><?php esc_html_e("Works in all modern browsers", 'cryptx'); ?></li>
+                    <li><?php esc_html_e("Provide fallback for users with JavaScript disabled", 'cryptx'); ?></li>
+                </ul>
+            </td>
+        </tr>
 
-    <h5>1. Dependencies</h5>
-    <ul>
-        <li>Requires generateHashFromString function</li>
-        <li>Requires DeCryptX function in the global scope</li>
-    </ul>
+        <!-- Troubleshooting Section -->
+        <tr>
+            <th colspan="2">
+                <h3 style="margin: 20px 0 10px 0; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                    <?php esc_html_e("Troubleshooting", 'cryptx'); ?>
+                </h3>
+            </th>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e("Common Issues", 'cryptx'); ?></th>
+            <td>
+                <ul>
+                    <li><strong><?php esc_html_e("Email Not Protected:", 'cryptx'); ?></strong> <?php esc_html_e("Ensure the shortcode syntax is correct with both opening and closing tags", 'cryptx'); ?></li>
+                    <li><strong><?php esc_html_e("Link Not Working:", 'cryptx'); ?></strong> <?php esc_html_e("Verify that JavaScript is enabled in the browser", 'cryptx'); ?></li>
+                    <li><strong><?php esc_html_e("Strange Characters:", 'cryptx'); ?></strong> <?php esc_html_e("Make sure the email address format is valid", 'cryptx'); ?></li>
+                    <li><strong><?php esc_html_e("Different encryptions:", 'cryptx'); ?></strong> <?php esc_html_e("Normal behavior: same email generates different encrypted strings for security", 'cryptx'); ?></li>
+                </ul>
+            </td>
+        </tr>
 
-    <h5>2. Browser Requirements</h5>
-    <ul>
-        <li>Works in all modern browsers</li>
-        <li>JavaScript must be enabled</li>
-    </ul>
-
-    <h5>3. Best Practices</h5>
-    <ul>
-        <li>Provide fallback for users with JavaScript disabled</li>
-        <li>Use meaningful link text instead of showing the email address</li>
-        <li>Add title or aria-label for accessibility</li>
-    </ul>
-
-    <h5>4. Security Considerations</h5>
-    <ul>
-        <li>Encryption is for spam prevention only</li>
-        <li>Not suitable for sensitive data transmission</li>
-        <li>Email address will be visible in browser's JavaScript console when decrypted</li>
-    </ul>
-
-    <h4>Troubleshooting</h4>
-
-    <h5>1. If links are not working:</h5>
-    <ul>
-        <li>Verify DeCryptX function is included</li>
-        <li>Check if JavaScript is enabled</li>
-        <li>Ensure email address format is valid</li>
-    </ul>
-
-    <h5>2. Different encryptions:</h5>
-    <ul>
-        <li>Normal behavior: same email generates different encrypted strings</li>
-        <li>Each encryption uses random values for security</li>
-    </ul>
-
-    <h5>3. Performance:</h5>
-    <ul>
-        <li>Lightweight function suitable for multiple uses</li>
-        <li>Safe for use in loops or event handlers</li>
-    </ul>
-
-    <div class="cryptx-related">
-        <h4>Related Functions</h4>
-        <ul>
-            <li><a href="#DeCryptX">DeCryptX()</a> - For the decryption function</li>
-            <li><a href="#generateHashFromString">generateHashFromString()</a> - For the internal encryption function
-            </li>
-        </ul>
-    </div>
-
-    <div class="cryptx-version">
-        <p><strong>Since:</strong> Version 3.5.0</p>
-    </div>
+        <!-- Version Info -->
+        <tr>
+            <th scope="row"><?php esc_html_e("Version Information", 'cryptx'); ?></th>
+            <td>
+                <p><strong><?php esc_html_e("Shortcode available since:", 'cryptx'); ?></strong> <?php esc_html_e("Version 2.7", 'cryptx'); ?></p>
+                <p><strong><?php esc_html_e("JavaScript functions since:", 'cryptx'); ?></strong> <?php esc_html_e("Version 3.5.0", 'cryptx'); ?></p>
+            </td>
+        </tr>
+    </table>
 </div>
 
 <style>
-    .cryptx-documentation {
-        max-width: 900px;
-        margin: 20px auto;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-        line-height: 1.6;
+    .cryptx-howto-settings pre {
+        background: #f4f4f4;
+        padding: 15px;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin: 10px 0;
     }
 
-    .cryptx-documentation h2 {
-        color: #23282d;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 10px;
-    }
-
-    .cryptx-documentation h3,
-    .cryptx-documentation h4,
-    .cryptx-documentation h5 {
-        color: #23282d;
-        margin-top: 1.5em;
-    }
-
-    .cryptx-documentation code {
+    .cryptx-howto-settings code {
         background: #f4f4f4;
         padding: 2px 6px;
         border-radius: 3px;
         font-family: Consolas, Monaco, monospace;
     }
 
-    .cryptx-documentation pre {
-        background: #f4f4f4;
-        padding: 15px;
-        border-radius: 4px;
-        overflow-x: auto;
-    }
-
-    .cryptx-documentation pre code {
+    .cryptx-howto-settings pre code {
         background: none;
         padding: 0;
     }
 
-    .cryptx-documentation ul {
+    .cryptx-howto-settings ul {
         margin-left: 20px;
     }
 
-    .cryptx-documentation li {
+    .cryptx-howto-settings li {
         margin-bottom: 8px;
     }
 
-    .cryptx-related {
-        margin-top: 30px;
-        padding: 15px;
-        background: #f8f9fa;
-        border-radius: 4px;
+    .cryptx-howto-settings h4 {
+        margin-top: 20px;
+        margin-bottom: 10px;
+        color: #23282d;
     }
 
-    .cryptx-version {
-        margin-top: 20px;
-        color: #666;
-        font-style: italic;
+    .cryptx-howto-settings .widefat {
+        margin-top: 10px;
+    }
+
+    .cryptx-howto-settings .widefat th,
+    .cryptx-howto-settings .widefat td {
+        padding: 8px 10px;
     }
 </style>

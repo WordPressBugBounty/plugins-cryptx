@@ -24,7 +24,7 @@ final class CryptX
     private function __construct()
     {
         $this->settingsTabs = new CryptXSettingsTabs($this);
-        $this->config = new Config( get_option('cryptX', []) );
+        $this->config = new Config(get_option('cryptX', []));
         self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
     }
 
@@ -61,6 +61,7 @@ final class CryptX
     public function startCryptX(): void
     {
         $this->checkAndUpdateVersion();
+        $this->addUniversalWidgetFilters(); // Add this line
         $this->initializePluginFilters();
         $this->registerCoreHooks();
         $this->initializeMetaBoxIfEnabled();
@@ -85,11 +86,23 @@ final class CryptX
      *
      * @return void
      */
-    private function initializePluginFilters(): void
+    public function initializePluginFilters(): void
     {
-        foreach (self::$cryptXOptions['filter'] as $filter) {
-            if (isset(self::$cryptXOptions[$filter]) && self::$cryptXOptions[$filter]) {
-                $this->addPluginFilters($filter);
+        if (empty($this->config)) {
+            return;
+        }
+
+        $activeFilters = $this->config->getActiveFilters();
+
+        foreach ($activeFilters as $filter) {
+            if ($filter === 'widget_text') {
+                $this->addWidgetFilters();
+            } else {
+                // Add autolink filters for non-widget filters if autolink is enabled
+                if ($this->config->isAutolinkEnabled()) {
+                    $this->addAutoLinkFilters($filter, 10);
+                }
+                $this->addOtherFilters($filter);
             }
         }
     }
@@ -235,12 +248,13 @@ final class CryptX
             );
         }
 
-        // Process content
+        // Process content (inline the encryptAndLinkContent logic)
         if (self::$cryptXOptions['autolink'] ?? false) {
             $content = $this->addLinkToEmailAddresses($content, true);
         }
 
-        $processedContent = $this->encryptAndLinkContent($content, true);
+        $content = $this->findEmailAddressesInContent($content, true);
+        $processedContent = $this->replaceEmailInContent($content, true);
 
         // Reset options to defaults
         self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
@@ -262,47 +276,11 @@ final class CryptX
         return $this->replaceEmailInContent($content, $shortcode);
     }
 
-    private function processAndEncryptEmails(EmailProcessingConfig $config): string
-    {
-        $content = $this->encryptMailtoLinks($config);
-        return $this->encryptPlainEmails($content, $config);
-    }
-
-    private function encryptMailtoLinks(EmailProcessingConfig $config): ?string
-    {
-        $content = $config->getContent();
-        if ($content === null) {
-            return null;
-        }
-
-        $postId = $config->getPostId() ?? $this->getCurrentPostId();
-
-        if (!$this->isIdExcluded($postId) || $config->isShortcode()) {
-            return preg_replace_callback(
-                self::MAILTO_PATTERN,
-                [$this, 'encryptEmailAddress'],
-                $content
-            );
-        }
-
-        return $content;
-    }
-
-    private function encryptPlainEmails(string $content, EmailProcessingConfig $config): string
-    {
-        $postId = $config->getPostId() ?? $this->getCurrentPostId();
-
-        if ((!$this->isIdExcluded($postId) || $config->isShortcode()) && !empty($content)) {
-            return preg_replace_callback(
-                self::EMAIL_PATTERN,
-                [$this, 'encodeEmailToLinkText'],
-                $content
-            );
-        }
-
-        return $content;
-    }
-
+    /**
+     * Retrieves the ID of the current post.
+     *
+     * @return int The current post ID if available, or -1 if no post object is present.
+     */
     private function getCurrentPostId(): int
     {
         global $post;
@@ -361,30 +339,6 @@ final class CryptX
     }
 
     /**
-     * Add plugin filters.
-     *
-     * This function adds the specified plugin filter if the 'autolink' key is present and its value is true in the global $cryptXOptions variable.
-     * It also adds the 'autolink' function as a filter to the $filterName if the global $shortcode_tags variable is not empty.
-     * Additionally, this function calls the addCommonFilters() and addOtherFilters() functions at specific points.
-     *
-     * @param string $filterName The name of the filter to add.
-     *
-     * @return void
-     */
-    private function addPluginFilters(string $filterName): void
-    {
-        global $shortcode_tags;
-
-        if (array_key_exists('autolink', self::$cryptXOptions) && self::$cryptXOptions['autolink']) {
-            $this->addAutoLinkFilters($filterName);
-            if (!empty($shortcode_tags)) {
-                $this->addAutoLinkFilters($filterName, 11);
-            }
-        }
-        $this->addOtherFilters($filterName);
-    }
-
-    /**
      * Adds common filters to a given filter name.
      *
      * This function adds the common filter 'autolink' to the provided $filterName.
@@ -411,8 +365,35 @@ final class CryptX
      */
     private function addOtherFilters(string $filterName): void
     {
-        add_filter($filterName, [$this, 'findEmailAddressesInContent'], 12);
-        add_filter($filterName, [$this, 'replaceEmailInContent'], 13);
+        // Check if this is a widget filter
+        $widgetFilters = $this->config->getWidgetFilters();
+        $isWidgetFilter = in_array($filterName, $widgetFilters);
+
+        if ($isWidgetFilter) {
+            // Use higher priority for widget filters (after autolink at priority 10)
+            add_filter($filterName, [$this, 'findEmailAddressesInContent'], 15);
+            add_filter($filterName, [$this, 'replaceEmailInContent'], 16);
+        } else {
+            // Standard priorities for other filters
+            add_filter($filterName, [$this, 'findEmailAddressesInContent'], 12);
+            add_filter($filterName, [$this, 'replaceEmailInContent'], 13);
+        }
+    }
+
+
+    /**
+     * Adds and applies widget filters from the configuration.
+     *
+     * @return void
+     */
+    private function addWidgetFilters(): void
+    {
+        $widgetFilters = $this->config->getWidgetFilters();
+
+        foreach ($widgetFilters as $widgetFilter) {
+            $this->addAutoLinkFilters($widgetFilter, 10);
+            $this->addOtherFilters($widgetFilter);
+        }
     }
 
     /**
@@ -441,15 +422,22 @@ final class CryptX
     {
         global $post;
 
-        if (self::$cryptXOptions['disable_rss'] && $this->isRssFeed())  return $content;
+        if (self::$cryptXOptions['disable_rss'] && $this->isRssFeed()) return $content;
+
+        // Check if current filter is a widget filter
+        $widgetFilters = $this->config->getWidgetFilters();
+        $isWidgetContext = in_array(current_filter(), $widgetFilters);
 
         $postId = (is_object($post)) ? $post->ID : -1;
-        if ((!$this->isIdExcluded($postId) || $isShortcode) && !empty($content)) {
+
+        // For widgets, always process; for other content, check exclusion rules
+        if (($isWidgetContext || !$this->isIdExcluded($postId) || $isShortcode) && !empty($content)) {
             $content = $this->replaceEmailWithLinkText($content);
         }
 
         return $content;
     }
+
 
     /**
      * Replace email addresses in a given content with link text.
@@ -617,24 +605,31 @@ final class CryptX
     {
         global $post;
 
-        if (self::$cryptXOptions['disable_rss'] && $this->isRssFeed())  return $content;
+        if (self::$cryptXOptions['disable_rss'] && $this->isRssFeed()) return $content;
 
         if ($content === null) {
             return null;
         }
 
+        // Check if current filter is a widget filter
+        $widgetFilters = $this->config->getWidgetFilters();
+        $isWidgetContext = in_array(current_filter(), $widgetFilters);
+
         $postId = (is_object($post)) ? $post->ID : -1;
         $isIdExcluded = $this->isIdExcluded($postId);
 
-        // FIXED: Added 's' modifier to handle multiline HTML (like Elementor buttons)
         $mailtoRegex = '/<a\s+[^>]*href=(["\'])mailto:([^"\']+)\1[^>]*>(.*?)<\/a>/is';
 
-        if ((!$isIdExcluded || $shortcode !== null)) {
-            $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressNew'], $content);
+        // For widgets, always process since there's no specific post context
+        // For other content, check exclusion rules
+        if ($isWidgetContext || !$isIdExcluded || $shortcode) {
+            // $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressNew'], $content);
+            $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressSecure'], $content);
         }
 
         return $content;
     }
+
 
     /**
      * Encrypts email addresses in search results.
@@ -658,7 +653,7 @@ final class CryptX
         }
 
         $return = $originalValue;
-        
+
         // Apply JavaScript handler if enabled
         if (!empty(self::$cryptXOptions['java'])) {
             $javaHandler = "javascript:DeCryptX('" . $this->generateHashFromString($searchResults[self::INDEX_TO_CHECK]) . "')";
@@ -681,13 +676,15 @@ final class CryptX
     }
 
     /**
-     * Encrypts an email address found in the search results and modifies it to safeguard against email harvesting.
+     * Encrypts an email address within the provided search results and generates a secure or obfuscated link.
+     * If secure encryption is enabled, the function uses secure encryption. Otherwise, it falls back to legacy methods
+     * or antispambot obfuscation if JavaScript is not enabled. Additional CSS attributes can be added if specified.
      *
-     * @param array $searchResults Array containing search result data, where:
-     *                             - Index 0 contains the full match.
-     *                             - Index 2 contains the email address.
-     *                             - Index 3 contains the link text for the email.
-     * @return string The encrypted or modified email link.
+     * @param array $searchResults The array containing match results:
+     *                              - Index 0: The full match value (original string),
+     *                              - Index 2: The email address to encrypt,
+     *                              - Index 3: The link text for the email link.
+     * @return string Returns the modified string where the email address is encrypted or obfuscated based on the configuration.
      */
     private function encryptEmailAddressNew(array $searchResults): string
     {
@@ -707,20 +704,45 @@ final class CryptX
 
         // Apply JavaScript handler if enabled
         if (!empty(self::$cryptXOptions['java'])) {
-            $javaHandler = "javascript:DeCryptX('" . $this->generateHashFromString($emailAddress) . "')";
+            // Check if secure encryption is enabled and working
+            if ($this->config->isSecureEncryptionEnabled()) {
+                try {
+                    // Use secure encryption - encrypt the full mailto URL
+                    $password = $this->config->getEncryptionPassword();
+                    $mailtoUrl = 'mailto:' . $emailAddress;
+                    $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
+
+                    $javaHandler = "javascript:secureDecryptAndNavigate('" .
+                        $this->escapeJavaScript($encryptedEmail) . "', '" .
+                        $this->escapeJavaScript($password) . "')";
+                } catch (\Exception $e) {
+                    // Fallback to legacy encryption if secure encryption fails
+                    error_log('CryptX Secure Encryption failed: ' . $e->getMessage());
+                    $encryptedEmail = $this->generateHashFromString($emailAddress);
+                    $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
+                }
+            } else {
+                // Use legacy encryption
+                $encryptedEmail = $this->generateHashFromString($emailAddress);
+                $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
+            }
+
             $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
         } else {
-            // Only apply antispambot if JavaScript is not enabled
-            $return = str_replace('mailto:' . $emailAddress, antispambot('mailto:' . $emailAddress), $return);
+            // Fallback to antispambot if JavaScript is not enabled
+            $return = str_replace('mailto:' . $emailAddress,
+                antispambot('mailto:' . $emailAddress), $return);
         }
 
         // Add CSS attributes if specified
         if (!empty(self::$cryptXOptions['css_id'])) {
-            $return = preg_replace('/(<a\s+[^>]*)(>)/i', '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
+            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
+                '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
         }
 
         if (!empty(self::$cryptXOptions['css_class'])) {
-            $return = preg_replace('/(<a\s+[^>]*)(>)/i', '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
+            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
+                '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
         }
 
         return $return;
@@ -767,23 +789,29 @@ final class CryptX
     public function addLinkToEmailAddresses(string $content, bool $shortcode = false): string
     {
         global $post;
+
+        // Check if current filter is a widget filter
+        $widgetFilters = $this->config->getWidgetFilters();
+        $isWidgetContext = in_array(current_filter(), $widgetFilters);
+
         $postID = is_object($post) ? $post->ID : -1;
 
-        if ($this->isIdExcluded($postID) && !$shortcode) {
+        // For widgets, always process; for other content, check exclusion rules
+        if (!$isWidgetContext && $this->isIdExcluded($postID) && !$shortcode) {
             return $content;
         }
 
-        $emailPattern = "[_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,})";
+        $emailPattern = "[_a-zA-Z0-9-+]+(\\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*(\\.[a-zA-Z]{2,})";
         $linkPattern = "<a href=\"mailto:\\2\">\\2</a>";
         $src = [
-            "/([\s])($emailPattern)/si",
+            "/([\\s])($emailPattern)/si",
             "/(>)($emailPattern)(<)/si",
-            "/(\()($emailPattern)(\))/si",
-            "/(>)($emailPattern)([\s])/si",
-            "/([\s])($emailPattern)(<)/si",
+            "/(\\()($emailPattern)(\\))/si",
+            "/(>)($emailPattern)([\\s])/si",
+            "/([\\s])($emailPattern)(<)/si",
             "/^($emailPattern)/si",
             "/(<a[^>]*>)<a[^>]*>/",
-            "/(<\/A>)<\/A>/i"
+            "/(<\\/A>)<\\/A>/i"
         ];
         $tar = [
             "\\1$linkPattern",
@@ -1113,6 +1141,12 @@ final class CryptX
         return html_entity_decode($str, ENT_QUOTES, 'UTF-8');
     }
 
+    /**
+     * Converts an associative array into an argument string.
+     *
+     * @param array $args An optional associative array where keys represent argument names and values represent argument values.
+     * @return string A formatted string of arguments where each key-value pair is encoded and concatenated.
+     */
     public function convertArrayToArgumentString(array $args = []): string
     {
         $string = "";
@@ -1139,8 +1173,8 @@ final class CryptX
     /**
      * Adds plugin action links to the WordPress plugin row
      *
-     * @param array  $links Existing plugin row links
-     * @param string $file  Plugin file path
+     * @param array $links Existing plugin row links
+     * @param string $file Plugin file path
      * @return array Modified plugin row links
      */
     public function add_plugin_action_links(array $links, string $file): array
@@ -1158,7 +1192,9 @@ final class CryptX
     }
 
     /**
-     * Creates the settings link for the plugin
+     * Creates and returns a settings link for the options page.
+     *
+     * @return string The HTML link to the settings page.
      */
     private function create_settings_link(): string
     {
@@ -1170,7 +1206,9 @@ final class CryptX
     }
 
     /**
-     * Creates the donation link for the plugin
+     * Creates and returns a donation link in HTML format.
+     *
+     * @return string The HTML string for the donation link.
      */
     private function create_donation_link(): string
     {
@@ -1180,4 +1218,170 @@ final class CryptX
             __('Donate', 'cryptx')
         );
     }
+
+    /**
+     * Adds a universal filter for all widget types by hooking into the widget display process.
+     *
+     * @return void
+     */
+    private function addUniversalWidgetFilters(): void
+    {
+        // Hook into the widget display process to catch all widget types
+        add_filter('widget_display_callback', [$this, 'processWidgetContent'], 10, 3);
+    }
+
+    /**
+     * Processes the widget content to detect and modify email addresses.
+     *
+     * @param array $instance The current widget instance settings.
+     * @param object $widget The widget object being processed.
+     * @param array $args Additional arguments passed by the widget function.
+     *
+     * @return array The modified widget instance with updated content.
+     */
+    public function processWidgetContent($instance, $widget, $args)
+    {
+        // Only process if widget_text option is enabled
+        if (!(self::$cryptXOptions['widget_text'] ?? false)) {
+            return $instance;
+        }
+
+        // Check if instance has text content (traditional text widgets)
+        if (isset($instance['text']) && stripos($instance['text'], '@') !== false) {
+            $instance['text'] = $this->addLinkToEmailAddresses($instance['text']);
+            $instance['text'] = $this->findEmailAddressesInContent($instance['text']);
+            $instance['text'] = $this->replaceEmailInContent($instance['text']);
+        }
+
+        // Check if instance has content field (block widgets)
+        if (isset($instance['content']) && stripos($instance['content'], '@') !== false) {
+            $instance['content'] = $this->addLinkToEmailAddresses($instance['content']);
+            $instance['content'] = $this->findEmailAddressesInContent($instance['content']);
+            $instance['content'] = $this->replaceEmailInContent($instance['content']);
+        }
+
+        return $instance;
+    }
+
+    /**
+     * Generates hash using secure or legacy encryption based on settings
+     *
+     * @param string $inputString
+     * @return string
+     */
+    private function generateSecureHashFromString(string $inputString): string
+    {
+        if ($this->config->isSecureEncryptionEnabled()) {
+            try {
+                $password = $this->config->getEncryptionPassword();
+                return SecureEncryption::encrypt($inputString, $password);
+            } catch (\Exception $e) {
+                error_log('CryptX Secure Encryption failed: ' . $e->getMessage());
+                // Fallback to legacy encryption
+                return $this->generateHashFromString($inputString);
+            }
+        }
+
+        return $this->generateHashFromString($inputString);
+    }
+
+    /**
+     * Enhanced email encryption with security validation
+     *
+     * @param array $searchResults
+     * @return string
+     */
+    private function encryptEmailAddressSecure(array $searchResults): string
+    {
+        $originalValue = $searchResults[0];  // Full match
+        $emailAddress = $searchResults[2];   // Email address
+        $linkText = $searchResults[3];       // Link text
+
+        if (strpos($emailAddress, '@') === self::NOT_FOUND) {
+            return $originalValue;
+        }
+
+        if (str_starts_with($emailAddress, self::SUBJECT_IDENTIFIER)) {
+            return $originalValue;
+        }
+
+        $return = $originalValue;
+
+        // Apply JavaScript handler if enabled
+        if (!empty(self::$cryptXOptions['java'])) {
+            $encryptionMode = $this->config->getEncryptionMode();
+
+            // Determine which encryption method to use
+            if ($encryptionMode === 'secure' &&
+                $this->config->isSecureEncryptionEnabled() &&
+                class_exists('CryptX\SecureEncryption')) {
+
+                // Use modern AES-256-GCM encryption
+                try {
+                    $password = $this->config->getEncryptionPassword();
+                    $mailtoUrl = 'mailto:' . $emailAddress;
+                    $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
+
+                    $javaHandler = "javascript:secureDecryptAndNavigate('" .
+                        $this->escapeJavaScript($encryptedEmail) . "', '" .
+                        $this->escapeJavaScript($password) . "')";
+                } catch (\Exception $e) {
+                    // Fallback to legacy if secure encryption fails
+                    error_log('CryptX Secure Encryption failed, falling back to legacy: ' . $e->getMessage());
+                    $encryptedEmail = $this->generateHashFromString($emailAddress);
+                    $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
+                }
+            } else {
+                // Use legacy encryption (original algorithm)
+                $encryptedEmail = $this->generateHashFromString($emailAddress);
+                $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
+            }
+
+            $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
+        } else {
+            // Fallback to antispambot if JavaScript is not enabled
+            $return = str_replace('mailto:' . $emailAddress,
+                antispambot('mailto:' . $emailAddress), $return);
+        }
+
+        // Add CSS attributes if specified
+        if (!empty(self::$cryptXOptions['css_id'])) {
+            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
+                '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
+        }
+
+        if (!empty(self::$cryptXOptions['css_class'])) {
+            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
+                '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
+        }
+
+        return $return;
+    }
+
+    /**
+     * Escapes string for safe JavaScript usage
+     *
+     * @param string $string
+     * @return string
+     */
+    private function escapeJavaScript(string $string): string
+    {
+        return str_replace(
+            ['\\', "'", '"', "\n", "\r", "\t"],
+            ['\\\\', "\\'", '\\"', '\\n', '\\r', '\\t'],
+            $string
+        );
+    }
+
+    /**
+     * Secure URL validation
+     *
+     * @param string $url
+     * @return bool
+     */
+    private function isValidUrl(string $url): bool
+    {
+        return SecureEncryption::validateUrl($url);
+    }
+
 }

@@ -1,64 +1,166 @@
 <?php
-/*
- * Plugin Name: CryptX
- * Plugin URI: http://weber-nrw.de/wordpress/cryptx/
- * Description: No more SPAM by spiders scanning you site for email addresses. With CryptX you can hide all your email addresses, with and without a mailto-link, by converting them using javascript or UNICODE.
- * Version: 3.5.2
+/**
+ * Plugin Name:       CryptX
+ * Plugin URI:        https://wordpress.org/plugins/cryptx/
+ * Description:       CryptX encrypts email addresses in your posts, pages, comments, and text widgets to protect them from spam bots while keeping them readable for your visitors.
+ * Version:           4.0.0
  * Requires at least: 6.7
- * Author: Ralf Weber
- * Author URI: http://weber-nrw.de/
+ * Tested up to:      6.8
+ * Requires PHP:      8.1
+ * Author:            Ralf Weber
+ * Author URI:        https://weber-nrw.de/
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: cryptx
-*/
+ * Text Domain:       cryptx
+ * Domain Path:       /languages
+ * Network:           false
+ * Update URI:        https://wordpress.org/plugins/cryptx/
+ *
+ * CryptX is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * any later version.
+ *
+ * CryptX is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with CryptX. If not, see https://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * @package CryptX
+ * @since   1.0.0
+ */
 
-//avoid direct calls to this file, because now WP core and framework has been used
-if ( ! function_exists( 'add_action' ) ) {
-	header( 'Status: 403 Forbidden' );
-	header( 'HTTP/1.1 403 Forbidden' );
-	exit();
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
 }
 
-/** @const CryptX version */
-define( 'CRYPTX_VERSION', "3.5.2" );
-define( 'CRYPTX_BASENAME', plugin_basename( __FILE__ ) );
-define( 'CRYPTX_BASEFOLDER', plugin_basename( dirname( __FILE__ ) ) );
-define( 'CRYPTX_DIR_URL', rtrim( plugin_dir_url( __FILE__ ), "/" ) . "/" );
-define( 'CRYPTX_DIR_PATH', plugin_dir_path( __FILE__ ) );
-define( 'CRYPTX_FILENAME', str_replace( CRYPTX_BASEFOLDER . '/', '', plugin_basename( __FILE__ ) ) );
+// Plugin constants
+define('CRYPTX_VERSION', '4.0.0');
+define('CRYPTX_PLUGIN_FILE', __FILE__);
+define('CRYPTX_PLUGIN_BASENAME', plugin_basename(__FILE__));
+define('CRYPTX_BASENAME', plugin_basename(__FILE__)); // Add this missing constant
+define('CRYPTX_DIR_PATH', plugin_dir_path(__FILE__));
+define('CRYPTX_DIR_URL', plugin_dir_url(__FILE__));
+define('CRYPTX_BASEFOLDER', dirname(CRYPTX_PLUGIN_BASENAME));
 
-spl_autoload_register(function ($class_name) {
-    // Handle classes in the CryptX namespace
-    if (strpos($class_name, 'CryptX\\') === 0) {
-        // Convert namespace separators to directory separators
-        $file_path = str_replace('\\', DIRECTORY_SEPARATOR, $class_name);
-        $file_path = str_replace('CryptX' . DIRECTORY_SEPARATOR, '', $file_path);
+// Minimum requirements check
+if (version_compare(PHP_VERSION, '8.1.0', '<')) {
+    add_action('admin_notices', function() {
+        echo '<div class="notice notice-error"><p>';
+        printf(
+        /* translators: %1$s: Required PHP version, %2$s: Current PHP version */
+            __('CryptX requires PHP version %1$s or higher. You are running version %2$s. Please update PHP.', 'cryptx'),
+            '8.1.0',
+            PHP_VERSION
+        );
+        echo '</p></div>';
+    });
+    return;
+}
 
-        // Construct the full file path
-        $file = CRYPTX_DIR_PATH . 'classes' . DIRECTORY_SEPARATOR . $file_path . '.php';
+// WordPress version check
+global $wp_version;
+if (version_compare($wp_version, '6.7', '<')) {
+    add_action('admin_notices', function() {
+        echo '<div class="notice notice-error"><p>';
+        printf(
+        /* translators: %1$s: Required WordPress version, %2$s: Current WordPress version */
+            __('CryptX requires WordPress version %1$s or higher. You are running version %2$s. Please update WordPress.', 'cryptx'),
+            '5.0',
+            $GLOBALS['wp_version']
+        );
+        echo '</p></div>';
+    });
+    return;
+}
 
-        if (file_exists($file)) {
-            require_once $file;
-        }
+// Autoloader for plugin classes
+spl_autoload_register(function ($class) {
+    // Check if the class belongs to our namespace
+    if (strpos($class, 'CryptX\\') !== 0) {
+        return;
+    }
+
+    // Remove namespace prefix
+    $class = substr($class, 7);
+
+    // Convert namespace separators to directory separators
+    $class = str_replace('\\', DIRECTORY_SEPARATOR, $class);
+
+    // Build the full path
+    $file = CRYPTX_DIR_PATH . 'classes' . DIRECTORY_SEPARATOR . $class . '.php';
+
+    // Include the file if it exists
+    if (file_exists($file)) {
+        require_once $file;
     }
 });
 
+// Initialize the plugin
+add_action('plugins_loaded', function() {
+    // Check if all required classes can be loaded
+    $requiredClasses = [
+        'CryptX\\CryptX',
+        'CryptX\\Config',
+        'CryptX\\CryptXSettingsTabs',
+        'CryptX\\SecureEncryption',
+        'CryptX\\Admin\\ChangelogSettingsTab',
+        'CryptX\\Admin\\GeneralSettingsTab',
+        'CryptX\\Admin\\PresentationSettingsTab',
+        'CryptX\\Util\\DataSanitizer',
+    ];
 
-//require_once( CRYPTX_DIR_PATH . 'classes/CryptX.php' );
-//require_once( CRYPTX_DIR_PATH . 'include/admin_option_page.php' );
+    $missingClasses = [];
+    foreach ($requiredClasses as $class) {
+        if (!class_exists($class)) {
+            $missingClasses[] = $class;
+        }
+    }
 
-$CryptX_instance = CryptX\CryptX::get_instance();
-$CryptX_instance->startCryptX();
+    if (!empty($missingClasses)) {
+        add_action('admin_notices', function() use ($missingClasses) {
+            echo '<div class="notice notice-error"><p>';
+            echo esc_html__('CryptX: Missing required classes: ', 'cryptx') . implode(', ', $missingClasses);
+            echo '</p></div>';
+        });
+        return;
+    }
 
-/**
- * Encrypts the given content using the CryptX WordPress plugin.
- *
- * @param string|null $content The content to encrypt.
- * @param array|null $args The optional arguments for the encryption. Default is an empty array.
- *
- * @return string The encrypted content wrapped in the '[cryptx]' shortcode.
- */
-function encryptx( ?string $content, ?array $args = [] ): string {
-	$CryptX_instance = Cryptx\CryptX::get_instance();
-	return do_shortcode( '[cryptx'. $CryptX_instance->convertArrayToArgumentString( $args ).']' . $content . '[/cryptx]' );
-}
+    // Initialize the main plugin class
+    try {
+        $cryptx_instance = CryptX\CryptX::get_instance();
+        $cryptx_instance->startCryptX();
+    } catch (Exception $e) {
+        add_action('admin_notices', function() use ($e) {
+            echo '<div class="notice notice-error"><p>';
+            echo esc_html__('CryptX initialization failed: ', 'cryptx') . esc_html($e->getMessage());
+            echo '</p></div>';
+        });
+    }
+});
+
+// Remove the strict activation requirements - let the plugin handle fallbacks
+register_activation_hook(__FILE__, function() {
+    // Just flush rewrite rules
+    flush_rewrite_rules();
+});
+
+// Plugin deactivation hook
+register_deactivation_hook(__FILE__, function() {
+    // Clean up any transients or cached data
+    global $wpdb;
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_cryptx_%'");
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_cryptx_%'");
+});
+
+// Add plugin action links - updated to match the settings page slug
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), function($links) {
+    $settings_link = '<a href="' . admin_url('options-general.php?page=cryptx') . '">' .
+        esc_html__('Settings', 'cryptx') . '</a>';
+    array_unshift($links, $settings_link);
+    return $links;
+});

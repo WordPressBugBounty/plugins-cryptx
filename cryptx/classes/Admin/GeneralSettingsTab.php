@@ -17,8 +17,11 @@ class GeneralSettingsTab {
         'metaBox' => 0,
         'disable_rss' => 0,
         'java' => 1,
-        'load_java' => 1
+        'load_java' => 1,
+        'use_secure_encryption' => 0,
+        'encryption_mode' => 'legacy'
     ];
+
     public function __construct(Config $config) {
         $this->config = $config;
     }
@@ -32,6 +35,22 @@ class GeneralSettingsTab {
         // Extract variables for the template
         $settings = [
             'options' => $options, // Pass all options
+            'securitySettings' => [
+                'use_secure_encryption' => [
+                    'label' => __('Use Secure Encryption', 'cryptx'),
+                    'description' => __('Enable AES-256-GCM encryption for enhanced security (recommended for new installations)', 'cryptx'),
+                    'value' => $options['use_secure_encryption'] ?? 0
+                ],
+                'encryption_mode' => [
+                    'label' => __('Encryption Mode', 'cryptx'),
+                    'description' => __('Choose encryption method. Legacy mode maintains backward compatibility with existing encrypted emails.', 'cryptx'),
+                    'value' => $options['encryption_mode'] ?? 'legacy',
+                    'options' => [
+                        'legacy' => __('Legacy (Compatible)', 'cryptx'),
+                        'secure' => __('Secure (AES-256-GCM)', 'cryptx')
+                    ]
+                ]
+            ],
             'applyTo' => [
                 'the_content' => [
                     'label' => __('Content', 'cryptx'),
@@ -49,7 +68,7 @@ class GeneralSettingsTab {
                 ],
                 'widget_text' => [
                     'label' => __('Widgets', 'cryptx'),
-                    'description' => __('(works only on all widgets, not on a single widget!)', 'cryptx')
+                    'description' => __('(applies to all text and HTML widgets)', 'cryptx')
                 ]
             ],
             'decryptionType' => [
