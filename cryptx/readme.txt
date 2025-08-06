@@ -1,10 +1,10 @@
 === CryptX ===
 Contributors: d3395
 Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696
-Tags: antispam, email, mail, addresses, spam protection, email encryption, privacy
+Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
 Tested up to: 6.8
-Stable tag: 4.0.0
+Stable tag: 4.0.1
 Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -68,7 +68,8 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
-
+= 4.0.1 =
+* The "encryptx" function was mistakenly removed during code cleanup. The function has now been added back. (Thx to Jan: https://wordpress.org/support/topic/version-4-breaks-because-of-undefined-function-encryptx/)
 = 4.0.0 =
 * **Major Update**: Complete code refactoring and modernization
 * Improved PHP 8.1+ compatibility and performance

@@ -3,7 +3,7 @@
  * Plugin Name:       CryptX
  * Plugin URI:        https://wordpress.org/plugins/cryptx/
  * Description:       CryptX encrypts email addresses in your posts, pages, comments, and text widgets to protect them from spam bots while keeping them readable for your visitors.
- * Version:           4.0.0
+ * Version:           4.0.1
  * Requires at least: 6.7
  * Tested up to:      6.8
  * Requires PHP:      8.1
@@ -39,7 +39,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('CRYPTX_VERSION', '4.0.0');
+define('CRYPTX_VERSION', '4.0.1');
 define('CRYPTX_PLUGIN_FILE', __FILE__);
 define('CRYPTX_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('CRYPTX_BASENAME', plugin_basename(__FILE__)); // Add this missing constant
@@ -164,3 +164,21 @@ add_filter('plugin_action_links_' . plugin_basename(__FILE__), function($links) 
     array_unshift($links, $settings_link);
     return $links;
 });
+
+/**
+ * Encrypts the given content using the CryptX library and wraps it with a shortcode.
+ *
+ * @param string $content The content to be encrypted.
+ * @param array|null $args Optional arguments to customize the encryption process.
+ *
+ * @return string The encrypted content wrapped in the appropriate shortcode.
+ */
+if (!function_exists('encryptx')) {
+    function encryptx(string $content, ?array $args = []): string {
+        $cryptXInstance = Cryptx\CryptX::get_instance();
+        $attributesString = $cryptXInstance->convertArrayToArgumentString($args);
+        $shortcode = '[cryptx' . $attributesString . ']' . $content . '[/cryptx]';
+
+        return do_shortcode($shortcode);
+    }
+}

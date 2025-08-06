@@ -157,11 +157,11 @@ final class CryptX
     public function getCryptXOptionsDefaults(): array
     {
         return array_merge(
-            $this->config->getAll(),
-            [
-                'version' => CRYPTX_VERSION,
-                'c2i_font' => $this->getDefaultFont()
-            ]
+                $this->config->getAll(),
+                [
+                        'version' => CRYPTX_VERSION,
+                        'c2i_font' => $this->getDefaultFont()
+                ]
         );
     }
 
@@ -173,8 +173,8 @@ final class CryptX
     private function getDefaultFont(): ?string
     {
         $availableFonts = $this->getFilesInDirectory(
-            CRYPTX_DIR_PATH . 'fonts',
-            [self::FONT_EXTENSION]
+                CRYPTX_DIR_PATH . 'fonts',
+                [self::FONT_EXTENSION]
         );
 
         return $availableFonts[0] ?? null;
@@ -218,8 +218,8 @@ final class CryptX
         }
 
         $decodedAttributes = array_map(
-            fn($value) => $this->decodeString($value),
-            $attributes
+                fn($value) => $this->decodeString($value),
+                $attributes
         );
         unset($decodedAttributes['encoded']);
 
@@ -242,9 +242,9 @@ final class CryptX
         // Update options if attributes provided
         if (!empty($attributes)) {
             self::$cryptXOptions = shortcode_atts(
-                $this->loadCryptXOptionsWithDefaults(),
-                array_change_key_case($attributes, CASE_LOWER),
-                $tag
+                    $this->loadCryptXOptionsWithDefaults(),
+                    array_change_key_case($attributes, CASE_LOWER),
+                    $tag
             );
         }
 
@@ -713,8 +713,8 @@ final class CryptX
                     $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
 
                     $javaHandler = "javascript:secureDecryptAndNavigate('" .
-                        $this->escapeJavaScript($encryptedEmail) . "', '" .
-                        $this->escapeJavaScript($password) . "')";
+                            $this->escapeJavaScript($encryptedEmail) . "', '" .
+                            $this->escapeJavaScript($password) . "')";
                 } catch (\Exception $e) {
                     // Fallback to legacy encryption if secure encryption fails
                     error_log('CryptX Secure Encryption failed: ' . $e->getMessage());
@@ -731,18 +731,18 @@ final class CryptX
         } else {
             // Fallback to antispambot if JavaScript is not enabled
             $return = str_replace('mailto:' . $emailAddress,
-                antispambot('mailto:' . $emailAddress), $return);
+                    antispambot('mailto:' . $emailAddress), $return);
         }
 
         // Add CSS attributes if specified
         if (!empty(self::$cryptXOptions['css_id'])) {
             $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
+                    '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
         }
 
         if (!empty(self::$cryptXOptions['css_class'])) {
             $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
+                    '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
         }
 
         return $return;
@@ -804,24 +804,24 @@ final class CryptX
         $emailPattern = "[_a-zA-Z0-9-+]+(\\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*(\\.[a-zA-Z]{2,})";
         $linkPattern = "<a href=\"mailto:\\2\">\\2</a>";
         $src = [
-            "/([\\s])($emailPattern)/si",
-            "/(>)($emailPattern)(<)/si",
-            "/(\\()($emailPattern)(\\))/si",
-            "/(>)($emailPattern)([\\s])/si",
-            "/([\\s])($emailPattern)(<)/si",
-            "/^($emailPattern)/si",
-            "/(<a[^>]*>)<a[^>]*>/",
-            "/(<\\/A>)<\\/A>/i"
+                "/([\\s])($emailPattern)/si",
+                "/(>)($emailPattern)(<)/si",
+                "/(\\()($emailPattern)(\\))/si",
+                "/(>)($emailPattern)([\\s])/si",
+                "/([\\s])($emailPattern)(<)/si",
+                "/^($emailPattern)/si",
+                "/(<a[^>]*>)<a[^>]*>/",
+                "/(<\\/A>)<\\/A>/i"
         ];
         $tar = [
-            "\\1$linkPattern",
-            "\\1$linkPattern\\6",
-            "\\1$linkPattern\\6",
-            "\\1$linkPattern\\6",
-            "\\1$linkPattern\\6",
-            "<a href=\"mailto:\\0\">\\0</a>",
-            "\\1",
-            "\\1"
+                "\\1$linkPattern",
+                "\\1$linkPattern\\6",
+                "\\1$linkPattern\\6",
+                "\\1$linkPattern\\6",
+                "\\1$linkPattern\\6",
+                "<a href=\"mailto:\\0\">\\0</a>",
+                "\\1",
+                "\\1"
         ];
 
         return preg_replace($src, $tar, $content);
@@ -1122,8 +1122,8 @@ final class CryptX
     {
         $str = htmlentities($str, ENT_QUOTES, 'UTF-8');
         $special = array(
-            '[' => '&#91;',
-            ']' => '&#93;',
+                '[' => '&#91;',
+                ']' => '&#93;',
         );
 
         return str_replace(array_keys($special), array_values($special), $str);
@@ -1184,8 +1184,8 @@ final class CryptX
         }
 
         $additional_links = [
-            $this->create_settings_link(),
-            $this->create_donation_link()
+                $this->create_settings_link(),
+                $this->create_donation_link()
         ];
 
         return array_merge($links, $additional_links);
@@ -1199,9 +1199,9 @@ final class CryptX
     private function create_settings_link(): string
     {
         return sprintf(
-            '<a href="options-general.php?page=%s">%s</a>',
-            CRYPTX_BASEFOLDER,
-            __('Settings')
+                '<a href="options-general.php?page=%s">%s</a>',
+                CRYPTX_BASEFOLDER,
+                __('Settings')
         );
     }
 
@@ -1213,9 +1213,9 @@ final class CryptX
     private function create_donation_link(): string
     {
         return sprintf(
-            '<a href="%s">%s</a>',
-            self::PAYPAL_DONATION_URL,
-            __('Donate', 'cryptx')
+                '<a href="%s">%s</a>',
+                self::PAYPAL_DONATION_URL,
+                __('Donate', 'cryptx')
         );
     }
 
@@ -1313,8 +1313,8 @@ final class CryptX
 
             // Determine which encryption method to use
             if ($encryptionMode === 'secure' &&
-                $this->config->isSecureEncryptionEnabled() &&
-                class_exists('CryptX\SecureEncryption')) {
+                    $this->config->isSecureEncryptionEnabled() &&
+                    class_exists('CryptX\SecureEncryption')) {
 
                 // Use modern AES-256-GCM encryption
                 try {
@@ -1323,8 +1323,8 @@ final class CryptX
                     $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
 
                     $javaHandler = "javascript:secureDecryptAndNavigate('" .
-                        $this->escapeJavaScript($encryptedEmail) . "', '" .
-                        $this->escapeJavaScript($password) . "')";
+                            $this->escapeJavaScript($encryptedEmail) . "', '" .
+                            $this->escapeJavaScript($password) . "')";
                 } catch (\Exception $e) {
                     // Fallback to legacy if secure encryption fails
                     error_log('CryptX Secure Encryption failed, falling back to legacy: ' . $e->getMessage());
@@ -1341,18 +1341,18 @@ final class CryptX
         } else {
             // Fallback to antispambot if JavaScript is not enabled
             $return = str_replace('mailto:' . $emailAddress,
-                antispambot('mailto:' . $emailAddress), $return);
+                    antispambot('mailto:' . $emailAddress), $return);
         }
 
         // Add CSS attributes if specified
         if (!empty(self::$cryptXOptions['css_id'])) {
             $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
+                    '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
         }
 
         if (!empty(self::$cryptXOptions['css_class'])) {
             $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
+                    '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
         }
 
         return $return;
@@ -1367,9 +1367,9 @@ final class CryptX
     private function escapeJavaScript(string $string): string
     {
         return str_replace(
-            ['\\', "'", '"', "\n", "\r", "\t"],
-            ['\\\\', "\\'", '\\"', '\\n', '\\r', '\\t'],
-            $string
+                ['\\', "'", '"', "\n", "\r", "\t"],
+                ['\\\\', "\\'", '\\"', '\\n', '\\r', '\\t'],
+                $string
         );
     }
 

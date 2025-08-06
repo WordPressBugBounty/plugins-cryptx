@@ -88,7 +88,7 @@ class PresentationSettingsTab {
                 ],
                 'scrambled' => [
                     'value' => 4,
-                    'label' => __('Text scrambled by AntiSpamBot', 'cryptx')
+                    'label' => __('Text scrambled by AntiSpamBot (Try it and look at your site and check the html source!)', 'cryptx')
                 ],
                 'pngImage' => [
                     'value' => 5,
