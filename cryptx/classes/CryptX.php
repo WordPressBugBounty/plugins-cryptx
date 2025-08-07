@@ -100,7 +100,7 @@ final class CryptX
             } else {
                 // Add autolink filters for non-widget filters if autolink is enabled
                 if ($this->config->isAutolinkEnabled()) {
-                    $this->addAutoLinkFilters($filter, 10);
+                    $this->addAutoLinkFilters($filter, 11);
                 }
                 $this->addOtherFilters($filter);
             }
@@ -391,7 +391,7 @@ final class CryptX
         $widgetFilters = $this->config->getWidgetFilters();
 
         foreach ($widgetFilters as $widgetFilter) {
-            $this->addAutoLinkFilters($widgetFilter, 10);
+            $this->addAutoLinkFilters($widgetFilter, 11);
             $this->addOtherFilters($widgetFilter);
         }
     }

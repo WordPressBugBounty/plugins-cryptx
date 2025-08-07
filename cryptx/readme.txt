@@ -4,7 +4,7 @@ Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_i
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
 Tested up to: 6.8
-Stable tag: 4.0.1
+Stable tag: 4.0.2
 Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -55,7 +55,7 @@ CryptX is designed to be lightweight and only loads JavaScript when needed. The 
 
 = Can I exclude certain email addresses from encryption? =
 
-Yes, you can use the whitelist feature to exclude specific domains or email addresses from encryption.
+Not directly; currently, specific email addresses cannot be excluded. It is possible to add individual posts/pages to the exclusion list using their ID. These pages/posts will then not be processed by CryptX.
 
 = Does it work with contact forms? =
 
@@ -68,6 +68,8 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.0.2 =
+* minor fix: changed the priority from the auto link filter back to 11 from 10 (Thx to Alexander: https://wordpress.org/support/topic/4-0-0-breaks-cryptx-in-custom-shortcode-output/)
 = 4.0.1 =
 * The "encryptx" function was mistakenly removed during code cleanup. The function has now been added back. (Thx to Jan: https://wordpress.org/support/topic/version-4-breaks-because-of-undefined-function-encryptx/)
 = 4.0.0 =

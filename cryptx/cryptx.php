@@ -3,7 +3,7 @@
  * Plugin Name:       CryptX
  * Plugin URI:        https://wordpress.org/plugins/cryptx/
  * Description:       CryptX encrypts email addresses in your posts, pages, comments, and text widgets to protect them from spam bots while keeping them readable for your visitors.
- * Version:           4.0.1
+ * Version:           4.0.2
  * Requires at least: 6.7
  * Tested up to:      6.8
  * Requires PHP:      8.1
