@@ -4,7 +4,7 @@ Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_i
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
 Tested up to: 6.8
-Stable tag: 4.0.3
+Stable tag: 4.0.4
 Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -68,6 +68,8 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.0.4 =
+* fixed issue of not loading new javascript if client has cached an old version.
 = 4.0.3 =
 * added option for PBKDF2 iterations to choose between more security or less performance impact (Thx to Alexander for hinting me)
 = 4.0.2 =
