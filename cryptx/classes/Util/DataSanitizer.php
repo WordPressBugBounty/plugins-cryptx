@@ -38,7 +38,8 @@ class DataSanitizer
             'opt_linktext',
             'autolink',
             'c2i_fontSize',
-            'echo'
+            'echo',
+            'iterations'
         ];
 
         $boolFields = ['metaBox'];

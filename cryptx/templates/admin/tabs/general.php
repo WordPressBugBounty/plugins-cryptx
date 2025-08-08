@@ -33,7 +33,25 @@
                        value="<?php echo $securitySettings['use_secure_encryption']['value']; ?>" />
             </td>
         </tr>
-
+        <tr id="iterations-row" style="<?php echo $securitySettings['encryption_mode']['value'] === 'secure' ? '' : 'display: none;'; ?>">
+            <th scope="row"><?php echo $securitySettings['iterations']['label']; ?></th>
+            <td>
+                <select name="cryptX_var[iterations]" id="iterations">
+                    <?php foreach ($securitySettings['iterations']['options'] as $value => $label): ?>
+                        <option value="<?php echo esc_attr($value); ?>" <?php selected($securitySettings['iterations']['value'], $value); ?>>
+                            <?php echo esc_html($label); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="description">
+                    <?php echo $securitySettings['iterations']['description']; ?>
+                    <br/>
+                    <strong><?php _e('Secure:', 'cryptx'); ?></strong> <?php _e('Uses 100,000 iterations, which is very secure but requires a lot of processing time and can slow down the page.', 'cryptx'); ?><br/>
+                    <strong><?php _e('Balanced:', 'cryptx'); ?></strong> <?php _e('Uses 10,000 iterations, making it a compromise between security and speed.', 'cryptx'); ?><br/>
+                    <strong><?php _e('Performance:', 'cryptx'); ?></strong> <?php _e('Uses 1,000 iterations, which is very fast but not very secure, but has only very little impact on page speed.', 'cryptx'); ?>
+                </p>
+            </td>
+        </tr>
         <!-- Separator -->
         <tr>
             <th colspan="2">
@@ -55,7 +73,7 @@
                                    id="<?php echo esc_attr($key); ?>"
                                    name="cryptX_var[<?php echo esc_attr($key); ?>]"
                                    value="1"
-                                <?php checked($options[$key] ?? 0, 1); ?> />
+                                    <?php checked($options[$key] ?? 0, 1); ?> />
                             <?php echo esc_html($setting['label']); ?>
                             <?php if (isset($setting['description'])): ?>
                                 <span class="description"><?php echo esc_html($setting['description']); ?></span>
@@ -77,7 +95,7 @@
                                    id="java_<?php echo esc_attr($key); ?>"
                                    name="cryptX_var[java]"
                                    value="<?php echo esc_attr($setting['value']); ?>"
-                                <?php checked($options['java'] ?? 1, $setting['value']); ?> />
+                                    <?php checked($options['java'] ?? 1, $setting['value']); ?> />
                             <?php echo $setting['label']; ?>
                         </label><br />
                     <?php endforeach; ?>
@@ -96,7 +114,7 @@
                                    id="load_java_<?php echo esc_attr($key); ?>"
                                    name="cryptX_var[load_java]"
                                    value="<?php echo esc_attr($setting['value']); ?>"
-                                <?php checked($options['load_java'] ?? 1, $setting['value']); ?> />
+                                    <?php checked($options['load_java'] ?? 1, $setting['value']); ?> />
                             <?php echo $setting['label']; ?>
                         </label><br />
                     <?php endforeach; ?>
@@ -115,7 +133,7 @@
                                id="autolink"
                                name="cryptX_var[autolink]"
                                value="1"
-                            <?php checked($options['autolink'] ?? 0, 1); ?> />
+                                <?php checked($options['autolink'] ?? 0, 1); ?> />
                         <?php _e('Automatically add a link to non-linked email addresses.', 'cryptx'); ?>
                     </label><br />
 
@@ -125,7 +143,7 @@
                                id="metaBox"
                                name="cryptX_var[metaBox]"
                                value="1"
-                            <?php checked($options['metaBox'] ?? 0, 1); ?> />
+                                <?php checked($options['metaBox'] ?? 0, 1); ?> />
                         <?php _e('Show the "Disable CryptX" checkbox in the post editor.', 'cryptx'); ?>
                     </label><br />
 
@@ -135,7 +153,7 @@
                                id="disable_rss"
                                name="cryptX_var[disable_rss]"
                                value="1"
-                            <?php checked($options['disable_rss'] ?? 1, 1); ?> />
+                                <?php checked($options['disable_rss'] ?? 1, 1); ?> />
                         <?php _e('Disable CryptX in RSS feeds.', 'cryptx'); ?>
                     </label>
                 </fieldset>
@@ -196,6 +214,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         const encryptionModeSelect = document.getElementById('encryption_mode');
         const useSecureEncryption = document.getElementById('use_secure_encryption');
+        const iterationsRow = document.getElementById('iterations-row');
 
         if (encryptionModeSelect && useSecureEncryption) {
             // Set initial value
@@ -204,6 +223,7 @@
             // Update on change
             encryptionModeSelect.addEventListener('change', function() {
                 useSecureEncryption.value = (this.value === 'secure') ? '1' : '0';
+                iterationsRow.style.display = (this.value === 'secure') ? '' : 'none';
             });
         }
     });

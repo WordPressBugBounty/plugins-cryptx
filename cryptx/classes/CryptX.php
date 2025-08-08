@@ -1075,6 +1075,7 @@ final class CryptX
     public function loadJavascriptFiles(): void
     {
         wp_enqueue_script('cryptx-js', CRYPTX_DIR_URL . 'js/cryptx.min.js', false, false, self::$cryptXOptions['load_java']);
+        wp_localize_script('cryptx-js', 'cryptxConfig', SecureEncryption::getJavaScriptConfig());
         wp_enqueue_style('cryptx-styles', CRYPTX_DIR_URL . 'css/cryptx.css');
     }
 

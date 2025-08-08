@@ -19,7 +19,8 @@ class GeneralSettingsTab {
         'java' => 1,
         'load_java' => 1,
         'use_secure_encryption' => 0,
-        'encryption_mode' => 'legacy'
+        'encryption_mode' => 'legacy',
+        'iteration' => '10000'
     ];
 
     public function __construct(Config $config) {
@@ -48,6 +49,16 @@ class GeneralSettingsTab {
                     'options' => [
                         'legacy' => __('Legacy (Compatible)', 'cryptx'),
                         'secure' => __('Secure (AES-256-GCM)', 'cryptx')
+                    ]
+                ],
+                'iterations' => [
+                    'label' => __('PBKDF2 iterations', 'cryptx'),
+                    'description' => __('Choose iterations mode. It\'s a trade-off between security and speed. The more email addresses there are on a page, the greater the impact will be.', 'cryptx'),
+                    'value' => $options['iterations'] ?? '10000',
+                    'options' => [
+                        '100000' => __('Secure', 'cryptx'),
+                        '10000' => __('Balanced', 'cryptx'),
+                        '1000' => __('Performance', 'cryptx')
                     ]
                 ]
             ],

@@ -72,10 +72,10 @@ class CryptXSettingsTabs
 
         // Enqueue CSS files with version for cache busting
         wp_enqueue_style(
-            'cryptx-admin-css',
-            CRYPTX_DIR_URL . 'css/admin.css',
-            [],
-            CRYPTX_VERSION
+                'cryptx-admin-css',
+                CRYPTX_DIR_URL . 'css/admin.css',
+                [],
+                CRYPTX_VERSION
         );
 
         // Enqueue WordPress color picker assets
@@ -92,12 +92,12 @@ class CryptXSettingsTabs
     public function registerSettingsMenu(): void
     {
         add_submenu_page(
-            'options-general.php',
-            _x('CryptX', 'CryptX settings page', 'cryptx'),
-            _x('CryptX', 'CryptX settings menu', 'cryptx'),
-            'manage_options',
-            'cryptx',
-            [$this, 'renderSettingsPage']
+                'options-general.php',
+                _x('CryptX', 'CryptX settings page', 'cryptx'),
+                _x('CryptX', 'CryptX settings menu', 'cryptx'),
+                'manage_options',
+                'cryptx',
+                [$this, 'renderSettingsPage']
         );
     }
 
@@ -149,13 +149,13 @@ class CryptXSettingsTabs
     private function parseGeneralSettings(array $saveOptions): array
     {
         $checkboxes = [
-            'the_content' => 0,
-            'the_meta_key' => 0,
-            'the_excerpt' => 0,
-            'comment_text' => 0,
-            'widget_text' => 0,
-            'autolink' => 0,
-            'metaBox' => 0,
+                'the_content' => 0,
+                'the_meta_key' => 0,
+                'the_excerpt' => 0,
+                'comment_text' => 0,
+                'widget_text' => 0,
+                'autolink' => 0,
+                'metaBox' => 0,
         ];
 
         return wp_parse_args($saveOptions, $checkboxes);
@@ -167,10 +167,10 @@ class CryptXSettingsTabs
     private function displaySuccessMessage(): void
     {
         add_settings_error(
-            'cryptx_messages',
-            'cryptx_message',
-            __('Settings saved.', 'cryptx'),
-            'updated'
+                'cryptx_messages',
+                'cryptx_message',
+                __('Settings saved.', 'cryptx'),
+                'updated'
         );
     }
 
@@ -180,10 +180,10 @@ class CryptXSettingsTabs
     private function displayResetMessage(): void
     {
         add_settings_error(
-            'cryptx_messages',
-            'cryptx_reset',
-            __('Settings have been reset to defaults.', 'cryptx'),
-            'updated'
+                'cryptx_messages',
+                'cryptx_reset',
+                __('Settings have been reset to defaults.', 'cryptx'),
+                'updated'
         );
     }
 
@@ -238,10 +238,10 @@ class CryptXSettingsTabs
     public function renderTabNavigation(): void
     {
         $tabs = [
-            'general' => __('General', 'cryptx'),
-            'presentation' => __('Presentation', 'cryptx'),
-            'howto' => __('How to&hellip;', 'cryptx'),
-            'changelog' => __('Changelog', 'cryptx')
+                'general' => __('General', 'cryptx'),
+                'presentation' => __('Presentation', 'cryptx'),
+                'howto' => __('How to&hellip;', 'cryptx'),
+                'changelog' => __('Changelog', 'cryptx')
         ];
 
         foreach ($tabs as $tab => $label) {
@@ -262,10 +262,10 @@ class CryptXSettingsTabs
         $url = admin_url('options-general.php?page=' . CRYPTX_BASEFOLDER . '&tab=' . $tab);
 
         printf(
-            '<a class="nav-tab %s" href="%s">%s</a>',
-            esc_attr($activeClass),
-            esc_url($url),
-            esc_html($label)
+                '<a class="nav-tab %s" href="%s">%s</a>',
+                esc_attr($activeClass),
+                esc_url($url),
+                esc_html($label)
         );
     }
 
@@ -316,10 +316,10 @@ class CryptXSettingsTabs
             // Log error and display admin notice
             error_log('CryptX General Settings Tab Error: ' . $e->getMessage());
             add_settings_error(
-                'cryptx_messages',
-                'cryptx_error',
-                __('An error occurred while loading the general settings.', 'cryptx'),
-                'error'
+                    'cryptx_messages',
+                    'cryptx_error',
+                    __('An error occurred while loading the general settings.', 'cryptx'),
+                    'error'
             );
         }
     }
@@ -350,10 +350,10 @@ class CryptXSettingsTabs
             // Log error and display admin notice
             error_log('CryptX Presentation Settings Tab Error: ' . $e->getMessage());
             add_settings_error(
-                'cryptx_messages',
-                'cryptx_error',
-                __('An error occurred while loading the presentation settings.', 'cryptx'),
-                'error'
+                    'cryptx_messages',
+                    'cryptx_error',
+                    __('An error occurred while loading the presentation settings.', 'cryptx'),
+                    'error'
             );
         }
     }
@@ -377,10 +377,10 @@ class CryptXSettingsTabs
         } catch (\Exception $e) {
             error_log('CryptX Changelog Tab Error: ' . $e->getMessage());
             add_settings_error(
-                'cryptx_messages',
-                'cryptx_error',
-                __('An error occurred while loading the changelog.', 'cryptx'),
-                'error'
+                    'cryptx_messages',
+                    'cryptx_error',
+                    __('An error occurred while loading the changelog.', 'cryptx'),
+                    'error'
             );
         }
     }

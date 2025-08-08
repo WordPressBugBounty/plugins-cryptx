@@ -3,6 +3,10 @@
  */
 
 // Configuration constants
+const ITERATIONS = window.cryptxConfig?.iterations || 100000; // fallback to old value
+const KEY_LENGTH = window.cryptxConfig?.keyLength || 32;
+const IV_LENGTH = window.cryptxConfig?.ivLength || 16;
+const SALT_LENGTH = window.cryptxConfig?.saltLength || 16;
 const CONFIG = {
 	ALLOWED_PROTOCOLS: ['http:', 'https:', 'mailto:'],
 	MAX_URL_LENGTH: 2048,
@@ -222,11 +226,11 @@ class SecureEncryption {
 			{
 				name: 'PBKDF2',
 				salt: salt,
-				iterations: 100000,
+				iterations: ITERATIONS,
 				hash: 'SHA-256'
 			},
 			keyMaterial,
-			{ name: 'AES-GCM', length: 256 },
+			{ name: 'AES-GCM', length: KEY_LENGTH * 8},
 			false,
 			['encrypt', 'decrypt']
 		);

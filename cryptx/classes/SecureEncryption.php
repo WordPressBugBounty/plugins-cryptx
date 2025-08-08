@@ -12,10 +12,31 @@ class SecureEncryption
     private const KEY_LENGTH = 32; // 256 bits
     private const IV_LENGTH = 16;  // 128 bits
     private const SALT_LENGTH = 16; // 128 bits
-    private const ITERATIONS = 100000; // PBKDF2 iterations
+    private static int $iterations = 10000; // PBKDF2 iterations
+
+    // Performance optimization: Key cache
+    private static array $keyCache = [];
+    private static int $maxCacheSize = 10; // Limit cache size to prevent memory issues
+
+    // Performance optimization: Pre-check cipher availability
+    private static ?bool $cipherAvailable = null;
 
     /**
-     * Derives a key from password using PBKDF2 - compatible with JavaScript
+     * Pre-checks if the required cipher is available
+     *
+     * @return bool
+     */
+    private static function isCipherAvailable(): bool
+    {
+        if (self::$cipherAvailable === null) {
+            self::$cipherAvailable = function_exists('openssl_encrypt') &&
+                in_array(self::CIPHER, openssl_get_cipher_methods());
+        }
+        return self::$cipherAvailable;
+    }
+
+    /**
+     * Derives a key from password using PBKDF2 with caching - compatible with JavaScript
      *
      * @param string $password
      * @param string $salt
@@ -28,11 +49,29 @@ class SecureEncryption
             throw new \Exception('PBKDF2 not available');
         }
 
-        return hash_pbkdf2('sha256', $password, $salt, self::ITERATIONS, self::KEY_LENGTH, true);
+        // Performance optimization: Cache derived keys
+        $cacheKey = hash('sha256', $password . $salt);
+
+        if (isset(self::$keyCache[$cacheKey])) {
+            return self::$keyCache[$cacheKey];
+        }
+
+        $derivedKey = hash_pbkdf2('sha256', $password, $salt, self::getIterations(), self::KEY_LENGTH, true);
+
+        // Manage cache size to prevent memory issues
+        if (count(self::$keyCache) >= self::$maxCacheSize) {
+            // Remove oldest entry (FIFO)
+            $oldestKey = array_key_first(self::$keyCache);
+            unset(self::$keyCache[$oldestKey]);
+        }
+
+        self::$keyCache[$cacheKey] = $derivedKey;
+        return $derivedKey;
     }
 
     /**
      * Encrypts plaintext using AES-256-GCM - JavaScript compatible format
+     * Optimized for performance
      *
      * @param string $plaintext
      * @param string $password
@@ -41,19 +80,19 @@ class SecureEncryption
      */
     public static function encrypt(string $plaintext, string $password): string
     {
-        if (!function_exists('openssl_encrypt')) {
-            throw new \Exception('OpenSSL extension not available');
+        // Performance optimization: Pre-check cipher availability
+        if (!self::isCipherAvailable()) {
+            throw new \Exception('OpenSSL extension or AES-256-GCM cipher not available');
         }
 
-        if (!in_array(self::CIPHER, openssl_get_cipher_methods())) {
-            throw new \Exception('AES-256-GCM cipher not available');
-        }
+        self::setIterations();
 
-        // Generate random salt and IV
-        $salt = random_bytes(self::SALT_LENGTH);
-        $iv = random_bytes(self::IV_LENGTH);
+        // Performance optimization: Generate salt and IV in one call
+        $randomBytes = random_bytes(self::SALT_LENGTH + self::IV_LENGTH);
+        $salt = substr($randomBytes, 0, self::SALT_LENGTH);
+        $iv = substr($randomBytes, self::SALT_LENGTH);
 
-        // Derive key from password
+        // Derive key from password (now with caching)
         $key = self::deriveKey($password, $salt);
 
         // Encrypt data
@@ -71,11 +110,59 @@ class SecureEncryption
             throw new \Exception('Encryption failed');
         }
 
-        // Format: salt(16) + iv(16) + encrypted_data + tag(16)
-        // This matches the JavaScript format expectation
-        $combined = $salt . $iv . $encrypted . $tag;
+        // Performance optimization: Use direct concatenation instead of multiple operations
+        return base64_encode($salt . $iv . $encrypted . $tag);
+    }
 
-        return base64_encode($combined);
+    /**
+     * Batch encrypt multiple plaintexts with same password for better performance
+     *
+     * @param array $plaintexts Array of strings to encrypt
+     * @param string $password
+     * @return array Array of encrypted strings
+     * @throws \Exception
+     */
+    public static function encryptBatch(array $plaintexts, string $password): array
+    {
+        if (!self::isCipherAvailable()) {
+            throw new \Exception('OpenSSL extension or AES-256-GCM cipher not available');
+        }
+
+        $results = [];
+
+        foreach ($plaintexts as $key => $plaintext) {
+            try {
+                $results[$key] = self::encrypt($plaintext, $password);
+            } catch (\Exception $e) {
+                $results[$key] = false; // Or handle error as needed
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Clears the key cache - useful for memory management
+     *
+     * @return void
+     */
+    public static function clearKeyCache(): void
+    {
+        self::$keyCache = [];
+    }
+
+    /**
+     * Gets current cache statistics
+     *
+     * @return array
+     */
+    public static function getCacheStats(): array
+    {
+        return [
+            'cache_size' => count(self::$keyCache),
+            'max_cache_size' => self::$maxCacheSize,
+            'memory_usage_bytes' => memory_get_usage(),
+        ];
     }
 
     /**
@@ -118,7 +205,7 @@ class SecureEncryption
                 throw new \Exception('Invalid encrypted data format');
             }
 
-            // Derive key from password
+            // Derive key from password (now with caching)
             $key = self::deriveKey($password, $salt);
 
             // Decrypt data
@@ -151,8 +238,13 @@ class SecureEncryption
     public static function debugEncryption(string $plaintext, string $password): array
     {
         try {
+            $startTime = microtime(true);
             $encrypted = self::encrypt($plaintext, $password);
+            $encryptTime = microtime(true) - $startTime;
+
+            $startTime = microtime(true);
             $decrypted = self::decrypt($encrypted, $password);
+            $decryptTime = microtime(true) - $startTime;
 
             return [
                 'success' => true,
@@ -161,7 +253,10 @@ class SecureEncryption
                 'decrypted' => $decrypted,
                 'match' => ($plaintext === $decrypted),
                 'encrypted_length' => strlen($encrypted),
-                'binary_length' => strlen(base64_decode($encrypted))
+                'binary_length' => strlen(base64_decode($encrypted)),
+                'encrypt_time_ms' => round($encryptTime * 1000, 2),
+                'decrypt_time_ms' => round($decryptTime * 1000, 2),
+                'cache_stats' => self::getCacheStats()
             ];
         } catch (\Exception $e) {
             return [
@@ -205,5 +300,39 @@ class SecureEncryption
         }
 
         return true;
+    }
+
+    /**
+     * Get the current PBKDF2 iterations for JavaScript compatibility
+     *
+     * @return int
+     */
+    public static function getIterations(): int
+    {
+        return self::$iterations;
+    }
+
+    private static function setIterations(): void
+    {
+        $config = new Config(get_option('cryptX', []));
+        self::$iterations = $config->get('iterations', self::getIterations());
+
+    }
+
+    /**
+     * Get configuration for JavaScript
+     *
+     * @return array
+     */
+    public static function getJavaScriptConfig(): array
+    {
+        self::setIterations();
+        return [
+            'iterations' => self::getIterations(),
+            'keyLength' => self::KEY_LENGTH,
+            'ivLength' => self::IV_LENGTH,
+            'saltLength' => self::SALT_LENGTH,
+            'cipher' => self::CIPHER
+        ];
     }
 }
