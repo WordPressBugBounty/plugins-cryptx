@@ -3,6 +3,46 @@
 namespace CryptX;
 
 final class Config {
+    /**
+     * Default configuration options for the application.
+     *
+     * This array provides the default settings and values for various
+     * features and behaviors of the application. These options can be
+     * customized to suit specific implementation requirements.
+     *
+     * Keys and their purposes:
+     * - 'version': The version of the application (default: null).
+     * - 'at': Replacement string for the "@" symbol (default: ' [at] ').
+     * - 'dot': Replacement string for the "." symbol (default: ' [dot] ').
+     * - 'css_id': CSS ID to use for specific elements (default: '').
+     * - 'css_class': CSS class to use for specific elements (default: '').
+     * - 'the_content': Flag to enable processing on content (default: 1).
+     * - 'render_block': Flag to control rendering of blocks (default: 1).
+     * - 'the_meta_key': Flag to enable processing on meta keys (default: 1).
+     * - 'the_excerpt': Flag to enable processing on excerpts (default: 1).
+     * - 'comment_text': Flag to enable processing on comments (default: 1).
+     * - 'widget_text': Flag to enable processing in widgets (default: 1).
+     * - 'java': Flag indicating JavaScript-related configurations (default: 1).
+     * - 'load_java': Flag to enable JavaScript loading (default: 1).
+     * - 'opt_linktext': Option for link text settings (default: 0).
+     * - 'autolink': Flag to enable auto-linking of content (default: 1).
+     * - 'alt_linktext': Alternative text for links (default: '').
+     * - 'alt_linkimage': Alternative image for links (default: '').
+     * - 'http_linkimage_title': Link image title with HTTP reference (default: '').
+     * - 'alt_linkimage_title': Alternative title for the link image (default: '').
+     * - 'excludedIDs': IDs to exclude from processing (default: '').
+     * - 'metaBox': Flag to enable or disable meta box features (default: 1).
+     * - 'alt_uploadedimage': Alternative uploaded image setting (default: '0').
+     * - 'c2i_font': Custom font setting (default: null).
+     * - 'c2i_fontSize': Font size for configuration (default: 10).
+     * - 'c2i_fontRGB': Font color in RGB format (default: '#000000').
+     * - 'echo': Flag to enable output directly to the browser (default: 1).
+     * - 'whiteList': Comma-separated string of allowed file extensions (default: 'jpeg,jpg,png,gif').
+     * - 'disable_rss': Flag to disable CryptX in RSS feeds by default (default: 1).
+     * - 'encryption_mode': Encryption mode setting (default: 'secure').
+     * - 'encryption_password': Password for encryption; auto-generated if null (default: null).
+     * - 'use_secure_encryption': Flag to enable secure encryption by default (default: 1).
+     */
     private const DEFAULT_OPTIONS = [
         'version' => null,
         'at' => ' [at] ',
@@ -29,13 +69,19 @@ final class Config {
         'c2i_fontSize' => 10,
         'c2i_fontRGB' => '#000000',
         'echo' => 1,
-        'filter' => ['the_content', 'the_meta_key', 'the_excerpt', 'comment_text', 'widget_text'],
         'whiteList' => 'jpeg,jpg,png,gif',
-        'disable_rss' => 1, // Disable CryptX in RSS feeds by default
-        'encryption_mode' => 'secure', // Changed to 'secure' by default
-        'encryption_password' => null,  // Will be auto-generated if null
-        'use_secure_encryption' => 1,   // Enable secure encryption by default
+        'disable_rss' => 1,
+        'encryption_mode' => 'secure',
+        'encryption_password' => null,
+        'use_secure_encryption' => 1,
     ];
+
+    /**
+     * An array of filter names used within the application.
+     * These filters are commonly applied to various types of content,
+     * including posts, comments, and widgets.
+     */
+    private const FILTERS = ['the_content', 'the_meta_key', 'the_excerpt', 'comment_text', 'widget_text'];
 
     // Define the actual widget filters that will be used when widget_text is enabled
     private const WIDGET_FILTERS = [
@@ -53,7 +99,7 @@ final class Config {
     }
 
     public function getActiveFilters(): array {
-        return array_filter($this->options['filter'], fn($filter) =>
+        return array_filter(self::FILTERS, fn($filter) =>
             isset($this->options[$filter]) && $this->options[$filter]
         );
     }

@@ -3,7 +3,7 @@
 /**
  * CryptX Changelog Settings Tab Template
  * 
- * @var array $changelogs Array of changelog entries
+ * @var array $cryptx_changelogs Array of changelog entries
  */
 
 if (!defined('ABSPATH')) {
@@ -25,7 +25,7 @@ if (!defined('ABSPATH')) {
             </th>
         </tr>
 
-        <?php if (empty($changelogs)): ?>
+        <?php if (empty($cryptx_changelogs)): ?>
             <!-- No Changelog Available -->
             <tr>
                 <th scope="row"><?php esc_html_e('Status', 'cryptx'); ?></th>
@@ -40,19 +40,19 @@ if (!defined('ABSPATH')) {
             </tr>
         <?php else: ?>
             <!-- Changelog Entries -->
-            <?php foreach ($changelogs as $index => $changelog): ?>
+            <?php foreach ($cryptx_changelogs as $cryptx_index => $cryptx_changelog): ?>
                 <tr>
                     <th scope="row" style="vertical-align: top; width: 150px;">
                         <div class="cryptx-version-badge">
-                            <strong><?php echo esc_html($changelog['version']); ?></strong>
+                            <strong><?php echo esc_html($cryptx_changelog['version']); ?></strong>
                         </div>
                     </th>
                     <td>
                         <div class="cryptx-changelog-content">
-                            <?php if (!empty($changelog['items'])): ?>
+                            <?php if (!empty($cryptx_changelog['items'])): ?>
                                 <ul class="cryptx-changelog-list">
-                                    <?php foreach ($changelog['items'] as $item): ?>
-                                        <li><?php echo wp_kses_post($item); ?></li>
+                                    <?php foreach ($cryptx_changelog['items'] as $cryptx_item): ?>
+                                        <li><?php echo wp_kses_post($cryptx_item); ?></li>
                                     <?php endforeach; ?>
                                 </ul>
                             <?php else: ?>
@@ -62,7 +62,7 @@ if (!defined('ABSPATH')) {
                     </td>
                 </tr>
                 
-                <?php if ($index < count($changelogs) - 1): ?>
+                <?php if ($cryptx_index < count($cryptx_changelogs) - 1): ?>
                     <!-- Separator between versions -->
                     <tr>
                         <td colspan="2" style="padding: 0;">
@@ -79,8 +79,9 @@ if (!defined('ABSPATH')) {
                         <p class="description" style="text-align: center; font-style: italic;">
                             <?php
                             printf(
-                                esc_html__('Showing %d version entries. For complete documentation, visit the %s.', 'cryptx'),
-                                count($changelogs),
+                                /* translators: %1$d: Number of changelog entries, %2$s: Link to WordPress Plugin Directory */
+                                esc_html__('Showing %1$d version entries. For complete documentation, visit the %2$s.', 'cryptx'),
+                                count($cryptx_changelogs),
                                 '<a href="https://wordpress.org/plugins/cryptx/" target="_blank">' . esc_html__('WordPress Plugin Directory', 'cryptx') . '</a>'
                             );
                             ?>

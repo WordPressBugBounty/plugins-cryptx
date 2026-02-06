@@ -36,7 +36,7 @@ class ChangelogSettingsTab
         }
 
         $changelogs = $this->getChangelogData();
-        $this->renderTemplate(self::TEMPLATE_PATH, ['changelogs' => $changelogs]);
+        $this->renderTemplate(self::TEMPLATE_PATH, ['cryptx_changelogs' => $changelogs]);
     }
 
     /**
@@ -63,7 +63,7 @@ class ChangelogSettingsTab
     private function renderTemplate(string $path, array $data): void
     {
         if (!file_exists($path)) {
-            throw new \RuntimeException(sprintf('Template file not found: %s', $path));
+            throw new \RuntimeException(sprintf('Template file not found: %s', esc_html($path, 'cryptx')));
         }
 
         extract($data);
@@ -75,7 +75,7 @@ class ChangelogSettingsTab
      */
     private function getActiveTab(): string
     {
-        return sanitize_text_field($_GET['tab'] ?? 'general');
+        return sanitize_text_field(wp_unslash($_GET['tab'] ?? 'general'));
     }
 
     /**
@@ -175,8 +175,8 @@ class ChangelogSettingsTab
                 continue;
             }
 
-            // Remove leading asterisk and clean up
-            if (strpos($line, '* ') === 0) {
+            // Remove the leading asterisk and clean up
+            if (str_starts_with($line, '* ')) {
                 $line = substr($line, 2);
             }
 

@@ -3,19 +3,19 @@ Contributors: d3395
 Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
-Tested up to: 6.8
-Stable tag: 4.0.4
-Requires PHP: 8.1
+Tested up to: 6.9
+Stable tag: 4.0.11
+Requires PHP: 8.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-No more SPAM by spiders scanning you site for email addresses!
+No more SPAM by spiders scanning your site for email addresses!
 
 == Description ==
 
-No more SPAM by spiders scanning you site for email addresses. With CryptX you can hide all your email addresses, with and without a mailto-link, by converting them using javascript or UNICODE.
+No more SPAM by spiders scanning your site for email addresses. With CryptX you can hide all your email addresses, with and without a mailto-link, by converting them using javascript or UNICODE.
 
-CryptX protects your email addresses from spam bots while keeping them readable and functional for your visitors. The plugin automatically detects email addresses in your content and encrypts them using various methods including JavaScript encryption, Unicode conversion, and image replacement.
+CryptX protects your email addresses from spambots while keeping them readable and functional for your visitors. The plugin automatically detects email addresses in your content and encrypts them using various methods including JavaScript encryption, Unicode conversion, and image replacement.
 
 **Key Features:**
 
@@ -47,7 +47,7 @@ CryptX protects your email addresses from spam bots while keeping them readable 
 
 = How does CryptX protect my email addresses? =
 
-CryptX uses various methods to hide email addresses from spam bots while keeping them functional for visitors. Methods include JavaScript encryption, Unicode conversion, and replacing emails with images or custom text.
+CryptX uses various methods to hide email addresses from spambots while keeping them functional for visitors. Methods include JavaScript encryption, Unicode conversion, and replacing emails with images or custom text.
 
 = Will this affect my website's performance? =
 
@@ -68,6 +68,25 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.0.11 =
+* fixed a bug in the deprecated "encryptx" function (thx to <a href="https://wordpress.org/support/users/hillyfov/">Machtnix</a>)
+= 4.0.10 =
+* fixed a <a href="https://wordpress.org/support/topic/fatal-typeerror-in-processwidgetcontent/">bug</a> in CryptX\CryptX::processWidgetContent() (thx to <a href="https://wordpress.org/support/users/mkoscher/">mkoscher</a>)
+* added support for themes with block support
+= 4.0.9 =
+* A bug in the "cryptx_encrypt" function has been fixed, where attributes became unusable due to multiple escaping.
+* fixed a bug where existing css ids and classes were overwritten
+* removed unused class methods for cleaner code
+= 4.0.8 =
+* fixed a bug with _wpnonce check
+= 4.0.7 =
+* added more sanitization for more security
+= 4.0.6 =
+* added more sanitization for more security
+= 4.0.5 =
+* **Security Fix** fixed issue with XSS vulnerability
+* **DEPRECATED** Due to the WordPress Plugin Checker, the template function 'encryptx' is deprecated and will be removed in the next release. The new function 'cryptx_encrypt' should be used instead.
+* changed some variable names and added more sanitization to pass most as possible of the plugin checks (https://wordpress.org/plugins/plugin-check/)
 = 4.0.4 =
 * fixed issue of not loading new javascript if client has cached an old version.
 = 4.0.3 =

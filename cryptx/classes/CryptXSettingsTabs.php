@@ -54,8 +54,8 @@ class CryptXSettingsTabs
 
         // Existing hooks
         add_action('admin_enqueue_scripts', [$this, 'enqueueAdminAssets']);
-        add_action('rw_cryptx_settings_tab', [$this, 'renderTabNavigation']);
-        add_action('rw_cryptx_settings_content', [$this, 'renderTabContent']);
+        add_action('cryptx_settings_tab', [$this, 'renderTabNavigation']);
+        add_action('cryptx_settings_content', [$this, 'renderTabContent']);
     }
 
     /**
@@ -107,7 +107,7 @@ class CryptXSettingsTabs
     public function renderSettingsPage(): void
     {
         if (!current_user_can('manage_options')) {
-            wp_die(__('You do not have sufficient permissions to access this page.'));
+            wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'cryptx'));
         }
 
         $this->handleFormSubmission();
@@ -121,10 +121,10 @@ class CryptXSettingsTabs
     {
         if (!empty($_POST['cryptX_var'])) {
             if (!check_admin_referer('cryptX')) {
-                wp_die(__('Security check failed'));
+                wp_die(esc_html__('Security check failed', 'cryptx'));
             }
 
-            $saveOptions = DataSanitizer::sanitize($_POST['cryptX_var']);
+            $saveOptions = DataSanitizer::sanitize(wp_unslash($_POST['cryptX_var']));
 
             // Handle reset for any tab
             if (isset($_POST['cryptX_var_reset'])) {
@@ -169,7 +169,7 @@ class CryptXSettingsTabs
         add_settings_error(
                 'cryptx_messages',
                 'cryptx_message',
-                __('Settings saved.', 'cryptx'),
+                esc_html__('Settings saved.', 'cryptx'),
                 'updated'
         );
     }
@@ -182,7 +182,7 @@ class CryptXSettingsTabs
         add_settings_error(
                 'cryptx_messages',
                 'cryptx_reset',
-                __('Settings have been reset to defaults.', 'cryptx'),
+                esc_html__('Settings have been reset to defaults.', 'cryptx'),
                 'updated'
         );
     }
@@ -194,17 +194,17 @@ class CryptXSettingsTabs
     {
         ?>
         <div class="cryptx-option-page">
-            <h1><?php _e("CryptX settings", 'cryptx'); ?></h1>
+            <h1><?php esc_html_e("CryptX settings", 'cryptx'); ?></h1>
             <form method="post" action="">
                 <?php
                 wp_nonce_field('cryptX');
                 settings_errors('cryptx_messages');
                 ?>
                 <h2 class="nav-tab-wrapper">
-                    <?php do_action('rw_cryptx_settings_tab'); ?>
+                    <?php do_action('cryptx_settings_tab'); ?>
                 </h2>
                 <div class="cryptx-tab-content-wrapper">
-                    <?php do_action('rw_cryptx_settings_content'); ?>
+                    <?php do_action('cryptx_settings_content'); ?>
                 </div>
             </form>
         </div>
@@ -218,7 +218,7 @@ class CryptXSettingsTabs
      */
     private function determineActiveTab(): string
     {
-        $tab = $_GET['tab'] ?? 'general';
+        $tab = (isset($_GET['tab']))? sanitize_text_field(wp_unslash($_GET['tab'])) : 'general';
         return in_array($tab, $this->allowedTabs) ? $tab : 'general';
     }
 
@@ -238,10 +238,10 @@ class CryptXSettingsTabs
     public function renderTabNavigation(): void
     {
         $tabs = [
-                'general' => __('General', 'cryptx'),
-                'presentation' => __('Presentation', 'cryptx'),
-                'howto' => __('How to&hellip;', 'cryptx'),
-                'changelog' => __('Changelog', 'cryptx')
+                'general' => esc_html__('General', 'cryptx'),
+                'presentation' => esc_html__('Presentation', 'cryptx'),
+                'howto' => esc_html__('How to&hellip;', 'cryptx'),
+                'changelog' => esc_html__('Changelog', 'cryptx')
         ];
 
         foreach ($tabs as $tab => $label) {
@@ -305,7 +305,7 @@ class CryptXSettingsTabs
             // Handle form submission if needed
             if (isset($_POST['cryptX_save_general_settings']) || isset($_POST['cryptX_var_reset'])) {
                 if (!empty($_POST['cryptX_var']) || isset($_POST['cryptX_var_reset'])) {
-                    $generalTab->saveSettings($_POST['cryptX_var'] ?? []);
+                    $generalTab->saveSettings(wp_unslash($_POST['cryptX_var']) ?? []);
                 }
             }
 
@@ -313,12 +313,11 @@ class CryptXSettingsTabs
             $generalTab->render();
 
         } catch (\Exception $e) {
-            // Log error and display admin notice
-            error_log('CryptX General Settings Tab Error: ' . $e->getMessage());
+            // display admin notice
             add_settings_error(
                     'cryptx_messages',
                     'cryptx_error',
-                    __('An error occurred while loading the general settings.', 'cryptx'),
+                    esc_html__('An error occurred while loading the general settings.', 'cryptx'),
                     'error'
             );
         }
@@ -347,12 +346,11 @@ class CryptXSettingsTabs
             $presentationTab->render();
 
         } catch (\Exception $e) {
-            // Log error and display admin notice
-            error_log('CryptX Presentation Settings Tab Error: ' . $e->getMessage());
+            // display admin notice
             add_settings_error(
                     'cryptx_messages',
                     'cryptx_error',
-                    __('An error occurred while loading the presentation settings.', 'cryptx'),
+                    esc_html__('An error occurred while loading the presentation settings.', 'cryptx'),
                     'error'
             );
         }
@@ -375,11 +373,10 @@ class CryptXSettingsTabs
             $changelogTab = new ChangelogSettingsTab($this->cryptX->getConfig());
             $changelogTab->render();
         } catch (\Exception $e) {
-            error_log('CryptX Changelog Tab Error: ' . $e->getMessage());
             add_settings_error(
                     'cryptx_messages',
                     'cryptx_error',
-                    __('An error occurred while loading the changelog.', 'cryptx'),
+                    esc_html__('An error occurred while loading the changelog.', 'cryptx'),
                     'error'
             );
         }

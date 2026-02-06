@@ -4,20 +4,14 @@ namespace CryptX;
 
 final class CryptX
 {
-
     const NOT_FOUND = false;
-    const MAIL_IDENTIFIER = 'mailto:';
     const SUBJECT_IDENTIFIER = "?subject=";
-    const INDEX_TO_CHECK = 4;
-    const PATTERN = '/(.*)(">)/i';
     const ASCII_VALUES_BLACKLIST = ['32', '34', '39', '60', '62', '63', '92', '94', '96', '127'];
     private static ?self $instance = null;
     private static array $cryptXOptions = [];
     private static int $imageCounter = 0;
     private const FONT_EXTENSION = 'ttf';
     private const PAYPAL_DONATION_URL = 'https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696';
-    private const MAILTO_PATTERN = '/<a (.*?)(href=("|\')mailto:(.*?)("|\')(.*?)|)>\s*(.*?)\s*<\/a>/i';
-    private const EMAIL_PATTERN = "/([_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,}))/i";
     private CryptXSettingsTabs $settingsTabs;
     private Config $config;
 
@@ -82,7 +76,12 @@ final class CryptX
     }
 
     /**
-     * Initializes and applies plugin filters based on the defined configuration options.
+     * Initializes and registers plugin filters based on the configuration settings.
+     *
+     * This method retrieves the active filters from the configuration and applies
+     * each filter by either adding widget-specific filters or other plugin-related filters.
+     * If the theme is a block theme, it transforms certain filters to an appropriate block-based equivalent.
+     * It also checks if autolink functionality is enabled and adds the respective filters when applicable.
      *
      * @return void
      */
@@ -93,6 +92,13 @@ final class CryptX
         }
 
         $activeFilters = $this->config->getActiveFilters();
+
+        if (function_exists('wp_is_block_theme') && wp_is_block_theme()) {
+            $activeFilters = array_map(
+                    fn($value) => $value === 'the_content' ? 'render_block' : $value,
+                    $activeFilters
+            );
+        }
 
         foreach ($activeFilters as $filter) {
             if ($filter === 'widget_text') {
@@ -252,7 +258,6 @@ final class CryptX
         if (self::$cryptXOptions['autolink'] ?? false) {
             $content = $this->addLinkToEmailAddresses($content, true);
         }
-
         $content = $this->findEmailAddressesInContent($content, true);
         $processedContent = $this->replaceEmailInContent($content, true);
 
@@ -295,29 +300,19 @@ final class CryptX
      */
     public function cryptXtinyUrl(): void
     {
-        $url = $_SERVER['REQUEST_URI'];
+        $url = (!empty($_SERVER['REQUEST_URI'])) ? esc_url(wp_unslash($_SERVER['REQUEST_URI'])) : '';
         $params = explode('/', $url);
         if (count($params) > 1) {
             $tiny_url = $params[count($params) - 2];
             if ($tiny_url == md5(get_bloginfo('url'))) {
-                $font = CRYPTX_DIR_PATH . 'fonts/' . self::$cryptXOptions['c2i_font'];
+                $font = CRYPTX_DIR_PATH . 'fonts/' . str_replace(' ', '_', self::$cryptXOptions['c2i_font']);
                 $msg = $params[count($params) - 1];
                 $size = self::$cryptXOptions['c2i_fontSize'];
                 $pad = 1;
-                $transparent = 1;
                 $rgb = str_replace("#", "", self::$cryptXOptions['c2i_fontRGB']);
                 $red = hexdec(substr($rgb, 0, 2));
                 $grn = hexdec(substr($rgb, 2, 2));
                 $blu = hexdec(substr($rgb, 4, 2));
-                $bg_red = 255 - $red;
-                $bg_grn = 255 - $grn;
-                $bg_blu = 255 - $blu;
-                $width = 0;
-                $height = 0;
-                $offset_x = 0;
-                $offset_y = 0;
-                $bounds = array();
-                $image = "";
                 $bounds = ImageTTFBBox($size, 0, $font, "W");
                 $font_height = abs($bounds[7] - $bounds[1]);
                 $bounds = ImageTTFBBox($size, 0, $font, $msg);
@@ -330,7 +325,7 @@ final class CryptX
                 $foreground = ImageColorAllocate($image, $red, $grn, $blu);
                 $background = imagecolorallocatealpha($image, 0, 0, 0, 127);
                 imagefill($image, 0, 0, $background);
-                ImageTTFText($image, $size, 0, round($offset_x + $pad, 0), round($offset_y + $pad, 0), $foreground, $font, $msg);
+                ImageTTFText($image, $size, 0, round($offset_x + $pad, 0), round($offset_y + $pad, 0), $foreground, $font, esc_html($msg));
                 Header("Content-type: image/png");
                 imagePNG($image);
                 die;
@@ -623,129 +618,10 @@ final class CryptX
         // For widgets, always process since there's no specific post context
         // For other content, check exclusion rules
         if ($isWidgetContext || !$isIdExcluded || $shortcode) {
-            // $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressNew'], $content);
             $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressSecure'], $content);
         }
 
         return $content;
-    }
-
-
-    /**
-     * Encrypts email addresses in search results.
-     *
-     * @param array $searchResults The search results containing email addresses.
-     *
-     * @return string The search results with encrypted email addresses.
-     */
-    private function encryptEmailAddress(array $searchResults): string
-    {
-        $originalValue = $searchResults[0];
-
-        if (strpos($searchResults[self::INDEX_TO_CHECK], '@') === self::NOT_FOUND) {
-            return $originalValue;
-        }
-
-        $mailReference = self::MAIL_IDENTIFIER . $searchResults[self::INDEX_TO_CHECK];
-
-        if (str_starts_with($searchResults[self::INDEX_TO_CHECK], self::SUBJECT_IDENTIFIER)) {
-            return $originalValue;
-        }
-
-        $return = $originalValue;
-
-        // Apply JavaScript handler if enabled
-        if (!empty(self::$cryptXOptions['java'])) {
-            $javaHandler = "javascript:DeCryptX('" . $this->generateHashFromString($searchResults[self::INDEX_TO_CHECK]) . "')";
-            $return = str_replace(self::MAIL_IDENTIFIER . $searchResults[self::INDEX_TO_CHECK], $javaHandler, $originalValue);
-        } else {
-            // Only apply antispambot if JavaScript is not enabled
-            $return = str_replace($mailReference, antispambot($mailReference), $return);
-        }
-
-        // Add CSS attributes if specified
-        if (!empty(self::$cryptXOptions['css_id'])) {
-            $return = preg_replace(self::PATTERN, '$1" id="' . self::$cryptXOptions['css_id'] . '">', $return);
-        }
-
-        if (!empty(self::$cryptXOptions['css_class'])) {
-            $return = preg_replace(self::PATTERN, '$1" class="' . self::$cryptXOptions['css_class'] . '">', $return);
-        }
-
-        return $return;
-    }
-
-    /**
-     * Encrypts an email address within the provided search results and generates a secure or obfuscated link.
-     * If secure encryption is enabled, the function uses secure encryption. Otherwise, it falls back to legacy methods
-     * or antispambot obfuscation if JavaScript is not enabled. Additional CSS attributes can be added if specified.
-     *
-     * @param array $searchResults The array containing match results:
-     *                              - Index 0: The full match value (original string),
-     *                              - Index 2: The email address to encrypt,
-     *                              - Index 3: The link text for the email link.
-     * @return string Returns the modified string where the email address is encrypted or obfuscated based on the configuration.
-     */
-    private function encryptEmailAddressNew(array $searchResults): string
-    {
-        $originalValue = $searchResults[0];  // Full match
-        $emailAddress = $searchResults[2];   // Email address (now at index 2)
-        $linkText = $searchResults[3];       // Link text (now at index 3)
-
-        if (strpos($emailAddress, '@') === self::NOT_FOUND) {
-            return $originalValue;
-        }
-
-        if (str_starts_with($emailAddress, self::SUBJECT_IDENTIFIER)) {
-            return $originalValue;
-        }
-
-        $return = $originalValue;
-
-        // Apply JavaScript handler if enabled
-        if (!empty(self::$cryptXOptions['java'])) {
-            // Check if secure encryption is enabled and working
-            if ($this->config->isSecureEncryptionEnabled()) {
-                try {
-                    // Use secure encryption - encrypt the full mailto URL
-                    $password = $this->config->getEncryptionPassword();
-                    $mailtoUrl = 'mailto:' . $emailAddress;
-                    $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
-
-                    $javaHandler = "javascript:secureDecryptAndNavigate('" .
-                            $this->escapeJavaScript($encryptedEmail) . "', '" .
-                            $this->escapeJavaScript($password) . "')";
-                } catch (\Exception $e) {
-                    // Fallback to legacy encryption if secure encryption fails
-                    error_log('CryptX Secure Encryption failed: ' . $e->getMessage());
-                    $encryptedEmail = $this->generateHashFromString($emailAddress);
-                    $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
-                }
-            } else {
-                // Use legacy encryption
-                $encryptedEmail = $this->generateHashFromString($emailAddress);
-                $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
-            }
-
-            $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
-        } else {
-            // Fallback to antispambot if JavaScript is not enabled
-            $return = str_replace('mailto:' . $emailAddress,
-                    antispambot('mailto:' . $emailAddress), $return);
-        }
-
-        // Add CSS attributes if specified
-        if (!empty(self::$cryptXOptions['css_id'])) {
-            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                    '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
-        }
-
-        if (!empty(self::$cryptXOptions['css_class'])) {
-            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                    '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
-        }
-
-        return $return;
     }
 
     /**
@@ -762,7 +638,7 @@ final class CryptX
 
         for ($i = 0; $i < strlen($inputString); $i++) {
             do {
-                $salt = mt_rand(0, 3);
+                $salt = wp_rand(0, 3);
                 $asciiValue = ord(substr($inputString, $i)) + $salt;
                 if (8364 <= $asciiValue) {
                     $asciiValue = 128;
@@ -1016,7 +892,7 @@ final class CryptX
             echo '<div id="message" class="updated fade">';
         }
 
-        echo "$message</div>";
+        echo esc_html($message, 'cryptx') . "</div>";
     }
 
     /**
@@ -1153,7 +1029,7 @@ final class CryptX
         $string = "";
         if (!empty($args)) {
             foreach ($args as $key => $value) {
-                $string .= sprintf(" %s=\"%s\"", $key, $this->encodeString($value));
+                $string .= sprintf(" %s=\"%s\"", $key, esc_attr($value));
             }
             $string .= " encoded=\"true\"";
         }
@@ -1202,7 +1078,7 @@ final class CryptX
         return sprintf(
                 '<a href="options-general.php?page=%s">%s</a>',
                 CRYPTX_BASEFOLDER,
-                __('Settings')
+                esc_html__('Settings', 'cryptx')
         );
     }
 
@@ -1216,7 +1092,7 @@ final class CryptX
         return sprintf(
                 '<a href="%s">%s</a>',
                 self::PAYPAL_DONATION_URL,
-                __('Donate', 'cryptx')
+                esc_html__('Donate', 'cryptx')
         );
     }
 
@@ -1232,16 +1108,21 @@ final class CryptX
     }
 
     /**
-     * Processes the widget content to detect and modify email addresses.
+     * Processes widget content to handle email addresses by adding links, identifying occurrences,
+     * and replacing them based on predefined rules.
      *
-     * @param array $instance The current widget instance settings.
-     * @param object $widget The widget object being processed.
-     * @param array $args Additional arguments passed by the widget function.
+     * @param array|false $instance An array containing widget instance data, or false if no instance was provided.
+     * @param object $widget The widget object whose content is being processed.
+     * @param array $args Additional arguments provided to the widget.
      *
-     * @return array The modified widget instance with updated content.
+     * @return array|false Modified widget instance data as an array, or false if processing was not applicable.
      */
-    public function processWidgetContent($instance, $widget, $args)
+    public function processWidgetContent(array|false $instance, $widget, $args): array|false
     {
+        if ($instance === false) {
+            return false;
+        }
+
         // Only process if widget_text option is enabled
         if (!(self::$cryptXOptions['widget_text'] ?? false)) {
             return $instance;
@@ -1277,7 +1158,6 @@ final class CryptX
                 $password = $this->config->getEncryptionPassword();
                 return SecureEncryption::encrypt($inputString, $password);
             } catch (\Exception $e) {
-                error_log('CryptX Secure Encryption failed: ' . $e->getMessage());
                 // Fallback to legacy encryption
                 return $this->generateHashFromString($inputString);
             }
@@ -1295,8 +1175,8 @@ final class CryptX
     private function encryptEmailAddressSecure(array $searchResults): string
     {
         $originalValue = $searchResults[0];  // Full match
-        $emailAddress = $searchResults[2];   // Email address
-        $linkText = $searchResults[3];       // Link text
+        $emailAddress = sanitize_email($searchResults[2]);   // Email address
+        $linkText = esc_html($searchResults[3]);       // Link text
 
         if (strpos($emailAddress, '@') === self::NOT_FOUND) {
             return $originalValue;
@@ -1324,18 +1204,17 @@ final class CryptX
                     $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
 
                     $javaHandler = "javascript:secureDecryptAndNavigate('" .
-                            $this->escapeJavaScript($encryptedEmail) . "', '" .
-                            $this->escapeJavaScript($password) . "')";
+                            esc_js($encryptedEmail) . "', '" .
+                            esc_js($password) . "')";
                 } catch (\Exception $e) {
                     // Fallback to legacy if secure encryption fails
-                    error_log('CryptX Secure Encryption failed, falling back to legacy: ' . $e->getMessage());
                     $encryptedEmail = $this->generateHashFromString($emailAddress);
-                    $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
+                    $javaHandler = "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
                 }
             } else {
                 // Use legacy encryption (original algorithm)
                 $encryptedEmail = $this->generateHashFromString($emailAddress);
-                $javaHandler = "javascript:DeCryptX('" . $this->escapeJavaScript($encryptedEmail) . "')";
+                $javaHandler = "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
             }
 
             $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
@@ -1347,31 +1226,26 @@ final class CryptX
 
         // Add CSS attributes if specified
         if (!empty(self::$cryptXOptions['css_id'])) {
-            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                    '$1 id="' . self::$cryptXOptions['css_id'] . '"$2', $return);
+            $cssId = esc_attr(self::$cryptXOptions['css_id']);
+            if (preg_match('/<a\s+[^>]*\bid\s*=\s*["\']/i', $return)) {
+                $return = preg_replace('/(<a\s+[^>]*\bid\s*=\s*(["\']))(.*?)\2/i', '$1$3 ' . $cssId . '$2', $return);
+            } else {
+                $return = preg_replace('/(<a\s+[^>]*)(>)/i',
+                        '$1 id="' . $cssId . '"$2', $return);
+            }
         }
 
         if (!empty(self::$cryptXOptions['css_class'])) {
-            $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                    '$1 class="' . self::$cryptXOptions['css_class'] . '"$2', $return);
+            $cssClass = esc_attr(self::$cryptXOptions['css_class']);
+            if (preg_match('/<a\s+[^>]*\bclass\s*=\s*["\']/i', $return)) {
+                $return = preg_replace('/(<a\s+[^>]*\bclass\s*=\s*(["\']))(.*?)\2/i', '$1$3 ' . $cssClass . '$2', $return);
+            } else {
+                $return = preg_replace('/(<a\s+[^>]*)(>)/i',
+                        '$1 class="' . $cssClass . '"$2', $return);
+            }
         }
 
         return $return;
-    }
-
-    /**
-     * Escapes string for safe JavaScript usage
-     *
-     * @param string $string
-     * @return string
-     */
-    private function escapeJavaScript(string $string): string
-    {
-        return str_replace(
-                ['\\', "'", '"', "\n", "\r", "\t"],
-                ['\\\\', "\\'", '\\"', '\\n', '\\r', '\\t'],
-                $string
-        );
     }
 
     /**

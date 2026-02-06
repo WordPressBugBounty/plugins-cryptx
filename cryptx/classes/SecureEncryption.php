@@ -224,7 +224,7 @@ class SecureEncryption
 
             return $decrypted;
         } catch (\Throwable $e) {
-            throw new \Exception('Decryption failed: ' . $e->getMessage());
+            throw new \Exception('Decryption failed: ' . esc_html($e->getMessage()));
         }
     }
 
@@ -282,7 +282,7 @@ class SecureEncryption
             return false;
         }
 
-        $parsedUrl = parse_url($url);
+        $parsedUrl = wp_parse_url($url);
         if (!$parsedUrl || !isset($parsedUrl['scheme'])) {
             return false;
         }

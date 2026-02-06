@@ -43,11 +43,11 @@ class PresentationSettingsTab {
                     'value' => 0,
                     'fields' => [
                         'at' => [
-                            'label' => __('Replacement for \'@\'', 'cryptx'),
+                            'label' => esc_html__('Replacement for \'@\'', 'cryptx'),
                             'value' => $options['at']
                         ],
                         'dot' => [
-                            'label' => __('Replacement for \'.\'', 'cryptx'),
+                            'label' => esc_html__('Replacement for \'.\'', 'cryptx'),
                             'value' => $options['dot']
                         ]
                     ]
@@ -56,7 +56,7 @@ class PresentationSettingsTab {
                     'value' => 1,
                     'fields' => [
                         'alt_linktext' => [
-                            'label' => __('Text for link', 'cryptx'),
+                            'label' => esc_html__('Text for link', 'cryptx'),
                             'value' => $options['alt_linktext']
                         ]
                     ]
@@ -65,11 +65,11 @@ class PresentationSettingsTab {
                     'value' => 2,
                     'fields' => [
                         'alt_linkimage' => [
-                            'label' => __('Image-URL', 'cryptx'),
+                            'label' => esc_html__('Image-URL', 'cryptx'),
                             'value' => $options['alt_linkimage']
                         ],
                         'http_linkimage_title' => [
-                            'label' => __('Title-Tag for the Image', 'cryptx'),
+                            'label' => esc_html__('Title-Tag for the Image', 'cryptx'),
                             'value' => $options['http_linkimage_title']
                         ]
                     ]
@@ -81,30 +81,30 @@ class PresentationSettingsTab {
                             'value' => $options['alt_uploadedimage']
                         ],
                         'alt_linkimage_title' => [
-                            'label' => __('Title-Tag for the Image', 'cryptx'),
+                            'label' => esc_html__('Title-Tag for the Image', 'cryptx'),
                             'value' => $options['alt_linkimage_title']
                         ]
                     ]
                 ],
                 'scrambled' => [
                     'value' => 4,
-                    'label' => __('Text scrambled by AntiSpamBot (Try it and look at your site and check the html source!)', 'cryptx')
+                    'label' => esc_html__('Text scrambled by AntiSpamBot (Try it and look at your site and check the html source!)', 'cryptx')
                 ],
                 'pngImage' => [
                     'value' => 5,
-                    'label' => __('Convert Email to PNG-image', 'cryptx'),
+                    'label' => esc_html__('Convert Email to PNG-image', 'cryptx'),
                     'fields' => [
                         'c2i_font' => [
-                            'label' => __('Font', 'cryptx'),
+                            'label' => esc_html__('Font', 'cryptx'),
                             'value' => $options['c2i_font'],
                             'options' => $this->getFontOptions()
                         ],
                         'c2i_fontSize' => [
-                            'label' => __('Font size (pixel)', 'cryptx'),
+                            'label' => esc_html__('Font size (pixel)', 'cryptx'),
                             'value' => $options['c2i_fontSize']
                         ],
                         'c2i_fontRGB' => [
-                            'label' => __('Font color (RGB)', 'cryptx'),
+                            'label' => esc_html__('Font color (RGB)', 'cryptx'),
                             'value' => $options['c2i_fontRGB']
                         ]
                     ]
@@ -128,7 +128,7 @@ class PresentationSettingsTab {
      */
     private function renderTemplate(string $path, array $data): void {
         if (!file_exists($path)) {
-            throw new \RuntimeException(sprintf('Template file not found: %s', $path));
+            throw new \RuntimeException(sprintf('Template file not found: %s', esc_html($path, 'cryptx')));
         }
 
         extract($data);
@@ -141,7 +141,7 @@ class PresentationSettingsTab {
      * @return string The sanitized active tab value from the request or 'general' if no tab is provided.
      */
     private function getActiveTab(): string {
-        return sanitize_text_field($_GET['tab'] ?? 'general');
+        return sanitize_text_field(wp_unslash($_GET['tab'] ?? 'general'));
     }
 
     /**
@@ -198,7 +198,7 @@ class PresentationSettingsTab {
      */
     public function saveSettings(array $data): void {
         if (!current_user_can('manage_options')) {
-            wp_die(__('You do not have sufficient permissions to access this page.'));
+            wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'cryptx'));
         }
 
         check_admin_referer('cryptX');
@@ -209,7 +209,7 @@ class PresentationSettingsTab {
             add_settings_error(
                 'cryptx_messages',
                 'settings_reset',
-                __('Presentation settings have been reset to defaults.', 'cryptx'),
+                esc_html__('Presentation settings have been reset to defaults.', 'cryptx'),
                 'updated'
             );
             return;
@@ -221,7 +221,7 @@ class PresentationSettingsTab {
         add_settings_error(
             'cryptx_messages',
             'settings_updated',
-            __('Settings saved.', 'cryptx'),
+            esc_html__('Settings saved.', 'cryptx'),
             'updated'
         );
     }
