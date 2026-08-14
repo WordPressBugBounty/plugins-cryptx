@@ -1,0 +1,38 @@
+Fonts bundled with CryptX
+=========================
+
+These fonts are used by the "Convert Email to PNG-image" option, which renders
+an email address into a PNG on the server. All fonts shipped here are free
+software and compatible with the GPL v2 licence of this plugin.
+
+Liberation_Sans.ttf   (metric-compatible replacement for Arial)
+Liberation_Serif.ttf  (metric-compatible replacement for Times New Roman)
+
+    Liberation Fonts
+    Digitized data copyright (c) 2010 Google Corporation.
+    Copyright (c) 2012 Red Hat, Inc.
+    Licensed under the SIL Open Font License, Version 1.1
+    https://openfontlicense.org/
+    https://github.com/liberationfonts/liberation-fonts
+
+DejaVu_Sans.ttf       (free substitute for Verdana)
+
+    DejaVu Fonts
+    Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+    Copyright (c) 2006 by Tavmjong Bah. All Rights Reserved.
+    Bitstream Vera Fonts Copyright, with DejaVu changes in the public domain.
+    https://dejavu-fonts.github.io/
+
+Note on the history of this directory
+-------------------------------------
+
+Up to and including version 4.0.11 this directory contained Arial.ttf,
+Times_New_Roman.ttf and Verdana.ttf -- the original typefaces of Monotype and
+Microsoft. Their embedded licence entry reads "You may use this font as
+permitted by the EULA for the product in which this font is included", which
+does not permit redistribution inside a GPL v2 package. They were replaced in
+4.0.12.
+
+If you had selected one of the old fonts, CryptX falls back to the first
+available font automatically: the stored option "c2i_font" is discarded on
+every version upgrade (see CryptX::updateCryptXSettings). No action is needed.

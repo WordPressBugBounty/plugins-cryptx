@@ -17,7 +17,9 @@ final class Config {
      * - 'css_id': CSS ID to use for specific elements (default: '').
      * - 'css_class': CSS class to use for specific elements (default: '').
      * - 'the_content': Flag to enable processing on content (default: 1).
-     * - 'render_block': Flag to control rendering of blocks (default: 1).
+     *                  On block themes this filter is swapped for 'render_block'
+     *                  at runtime, see CryptX::initializePluginFilters(). There is
+     *                  no separate option for it.
      * - 'the_meta_key': Flag to enable processing on meta keys (default: 1).
      * - 'the_excerpt': Flag to enable processing on excerpts (default: 1).
      * - 'comment_text': Flag to enable processing on comments (default: 1).
@@ -40,8 +42,14 @@ final class Config {
      * - 'whiteList': Comma-separated string of allowed file extensions (default: 'jpeg,jpg,png,gif').
      * - 'disable_rss': Flag to disable CryptX in RSS feeds by default (default: 1).
      * - 'encryption_mode': Encryption mode setting (default: 'secure').
-     * - 'encryption_password': Password for encryption; auto-generated if null (default: null).
+     * - 'encryption_password': Password for encryption; a random secret is generated
+     *                          on first use if null and then kept forever (default: null).
      * - 'use_secure_encryption': Flag to enable secure encryption by default (default: 1).
+     * - 'iterations': PBKDF2 iteration count for the secure mode (default: 10000).
+     * - 'link_mode': How the encrypted link is delivered -- 'data' puts the payload
+     *                into data attributes and lets a delegated click handler take
+     *                over (survives a Content-Security-Policy), 'js' is the historical
+     *                "javascript:" URI (default: 'data').
      */
     private const DEFAULT_OPTIONS = [
         'version' => null,
@@ -74,6 +82,8 @@ final class Config {
         'encryption_mode' => 'secure',
         'encryption_password' => null,
         'use_secure_encryption' => 1,
+        'iterations' => 10000,
+        'link_mode' => 'data',
     ];
 
     /**
@@ -210,7 +220,16 @@ final class Config {
     }
 
     /**
-     * Resets all options to their default values
+     * Resets all options to their default values.
+     *
+     * Careful before wiring this up again: it has had no caller since 4.1.0,
+     * because the settings screen resets through SettingsSchema instead. This
+     * method sets the whole array to DEFAULT_OPTIONS, in which
+     * encryption_password is null -- and then saves. That discards the secret
+     * every already delivered link was encrypted with, so those links stop
+     * resolving until the pages are regenerated. SettingsSchema::defaults()
+     * covers only the editable options and leaves the secret alone, which is
+     * why the REST route uses it.
      *
      * @return void
      */
@@ -257,13 +276,34 @@ final class Config {
      */
     public function getEncryptionPassword(): string
     {
+        // A stored password is returned untouched and is NEVER regenerated.
+        // The password is baked into every link this plugin has ever emitted,
+        // so a new one would turn all already delivered and cached pages into
+        // undecryptable garbage. Only a missing (or empty) value is filled in.
         if (empty($this->options['encryption_password'])) {
-            // Generate a secure password based on WordPress keys
-            $this->options['encryption_password'] = hash('sha256',
-                (defined('AUTH_KEY') ? AUTH_KEY : '') .
-                (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') .
-                get_site_url()
-            );
+            // Random secret instead of a value derived from the WordPress keys.
+            // Rationale: this password is published. It is handed to the browser
+            // as the second argument of the generated
+            // javascript:secureDecryptAndNavigate(...) link and therefore sits
+            // in the HTML of every page in clear text. Deriving it from AUTH_KEY
+            // and SECURE_AUTH_KEY was not reversible, but there is no reason to
+            // publish anything at all that is a function of the site's secrets.
+            //
+            // bin2hex(random_bytes(32)) is the choice because random_bytes() is
+            // the platform CSPRNG (always available on the required PHP 8.1+,
+            // not filterable by other plugins) and hex output is pure [0-9a-f]:
+            // it survives every escaping stage on the way into the JavaScript
+            // string literal and into the option row unchanged. 32 bytes = 256
+            // bits, matching the AES-256 key later derived from it via PBKDF2.
+            try {
+                $this->options['encryption_password'] = bin2hex(random_bytes(32));
+            } catch (\Throwable $e) {
+                // random_bytes() throws when the system has no usable source of
+                // randomness. wp_generate_password() then provides the fallback;
+                // 64 chars without special characters keeps the value safe to
+                // embed unescaped.
+                $this->options['encryption_password'] = wp_generate_password(64, false, false);
+            }
             $this->save();
         }
         return $this->options['encryption_password'];

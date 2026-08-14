@@ -443,6 +443,210 @@ function generateHashFromString(inputString) {
 	}
 }
 
+/**
+ * CSP-safe link handling
+ *
+ * Markup produced by the PHP side (no javascript: URI, therefore no
+ * 'unsafe-inline' needed in the Content-Security-Policy):
+ *
+ *   <a href="#" class="cryptx-link" data-cx="BASE64" data-cxk="PASSWORD" data-cxm="secure">…</a>
+ *   <a href="#" class="cryptx-link" data-cx="0i2p2h…" data-cxm="legacy">…</a>
+ *
+ * A single delegated listener on `document` covers links that are added later
+ * (widgets, AJAX, block editor preview). The legacy javascript: entry points
+ * above stay untouched for pages that were cached before this version.
+ */
+
+const CRYPTX_LINK_CLASS = 'cryptx-link';
+const CRYPTX_ATTR_PAYLOAD = 'data-cx';
+const CRYPTX_ATTR_KEY = 'data-cxk';
+const CRYPTX_ATTR_MODE = 'data-cxm';
+const CRYPTX_MAX_DELEGATION_DEPTH = 50;
+
+let cryptxLinkHandlerAttached = false;
+
+/**
+ * True only when the Web Crypto API is usable (secure context, modern browser)
+ * @returns {boolean}
+ */
+function cryptxHasSubtleCrypto() {
+	return typeof crypto !== 'undefined' &&
+		!!crypto &&
+		!!crypto.subtle &&
+		typeof crypto.subtle.importKey === 'function';
+}
+
+/**
+ * @param {*} element
+ * @returns {boolean}
+ */
+function isCryptxLink(element) {
+	if (!element || typeof element.getAttribute !== 'function') {
+		return false;
+	}
+
+	if (element.classList && typeof element.classList.contains === 'function') {
+		return element.classList.contains(CRYPTX_LINK_CLASS);
+	}
+
+	if (typeof element.className === 'string') {
+		return (' ' + element.className + ' ').indexOf(' ' + CRYPTX_LINK_CLASS + ' ') !== -1;
+	}
+
+	return false;
+}
+
+/**
+ * Walks up from the event target to the CryptX link (clicks may land on a
+ * child element, e.g. an <img> or <span> inside the anchor).
+ * @param {*} startNode
+ * @returns {*|null}
+ */
+function findCryptxLink(startNode) {
+	let node = startNode;
+	let depth = 0;
+
+	while (node && depth < CRYPTX_MAX_DELEGATION_DEPTH) {
+		if (isCryptxLink(node)) {
+			return node;
+		}
+		node = node.parentElement || node.parentNode || null;
+		depth++;
+	}
+
+	return null;
+}
+
+/**
+ * Decrypts a data-cx payload according to data-cxm.
+ * Missing mode behaves like "secure" with a fallback to "legacy",
+ * exactly like secureDecryptAndNavigate() does.
+ * @param {string} payload
+ * @param {string|null} password
+ * @param {string|null} mode
+ * @returns {Promise<string>}
+ */
+async function cryptxDecryptPayload(payload, password, mode) {
+	if (typeof payload !== 'string' || payload.length === 0) {
+		throw new Error('Missing or invalid data-cx payload');
+	}
+
+	const normalizedMode = typeof mode === 'string' ? mode.trim().toLowerCase() : '';
+
+	if (normalizedMode === 'legacy') {
+		return LegacyEncryption.originalDecrypt(payload);
+	}
+
+	if (!cryptxHasSubtleCrypto()) {
+		if (normalizedMode === 'secure') {
+			throw new Error('Web Crypto API (crypto.subtle) is not available in this context');
+		}
+		return LegacyEncryption.originalDecrypt(payload);
+	}
+
+	const key = typeof password === 'string' && password.length > 0 ? password : 'default_key';
+
+	try {
+		return await SecureEncryption.decrypt(payload, key);
+	} catch (secureError) {
+		if (normalizedMode === 'secure') {
+			throw secureError;
+		}
+		console.warn('CryptX: modern decryption failed, trying original algorithm');
+		return LegacyEncryption.originalDecrypt(payload);
+	}
+}
+
+/**
+ * Delegated click handler. Never navigates without SecureUtils.validateUrl().
+ * @param {Object} event
+ * @returns {Promise<void>}
+ */
+async function handleCryptxLinkClick(event) {
+	if (!event) {
+		return;
+	}
+
+	const link = findCryptxLink(event.target);
+	if (!link) {
+		return;
+	}
+
+	// Suppress the "#" jump before anything asynchronous happens.
+	if (typeof event.preventDefault === 'function') {
+		event.preventDefault();
+	}
+
+	const payload = link.getAttribute(CRYPTX_ATTR_PAYLOAD);
+	const password = link.getAttribute(CRYPTX_ATTR_KEY);
+	const mode = link.getAttribute(CRYPTX_ATTR_MODE);
+
+	try {
+		const decryptedUrl = await cryptxDecryptPayload(payload, password, mode);
+
+		const validatedUrl = SecureUtils.validateUrl(decryptedUrl);
+		if (!validatedUrl) {
+			console.error('CryptX: invalid or unsafe URL detected, navigation aborted');
+			return;
+		}
+
+		window.location.href = validatedUrl;
+	} catch (error) {
+		console.error('CryptX: could not resolve link target:', error && error.message ? error.message : error);
+	}
+}
+
+/**
+ * Attaches the single delegated listener. Idempotent.
+ * @param {Object} [targetDocument]
+ * @returns {boolean} true when the listener was attached by this call
+ */
+function initCryptxLinkHandler(targetDocument) {
+	const doc = targetDocument || (typeof document !== 'undefined' ? document : null);
+
+	if (!doc || typeof doc.addEventListener !== 'function') {
+		return false;
+	}
+
+	if (cryptxLinkHandlerAttached) {
+		return false;
+	}
+
+	doc.addEventListener('click', handleCryptxLinkClick, false);
+	cryptxLinkHandlerAttached = true;
+
+	return true;
+}
+
+// Attach immediately - delegation on `document` needs no finished DOM, so this
+// works for a <head> include as well as for a footer include, where
+// DOMContentLoaded may already have fired and would never come again.
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+	initCryptxLinkHandler(document);
+
+	if (document.readyState === 'loading') {
+		// Safety net for exotic environments that replace `document` while parsing.
+		document.addEventListener('DOMContentLoaded', function () {
+			initCryptxLinkHandler(document);
+		});
+	}
+}
+
+// Keep everything reachable by name, also after minification
+if (typeof window !== 'undefined') {
+	window.secureDecryptAndNavigate = secureDecryptAndNavigate;
+	window.DeCryptX = DeCryptX;
+	window.DeCryptString = DeCryptString;
+	window.generateSecureEmailLink = generateSecureEmailLink;
+	window.generateDeCryptXHandler = generateDeCryptXHandler;
+	window.generateHashFromString = generateHashFromString;
+	window.handleCryptxLinkClick = handleCryptxLinkClick;
+	window.initCryptxLinkHandler = initCryptxLinkHandler;
+	window.SecureUtils = SecureUtils;
+	window.LegacyEncryption = LegacyEncryption;
+	window.SecureEncryption = SecureEncryption;
+}
+
 // Export functions for module usage
 if (typeof module !== 'undefined' && module.exports) {
 	module.exports = {
@@ -452,6 +656,9 @@ if (typeof module !== 'undefined' && module.exports) {
 		DeCryptString,
 		generateDeCryptXHandler,
 		generateHashFromString,
+		handleCryptxLinkClick,
+		initCryptxLinkHandler,
+		cryptxDecryptPayload,
 		SecureEncryption,
 		LegacyEncryption,
 		SecureUtils

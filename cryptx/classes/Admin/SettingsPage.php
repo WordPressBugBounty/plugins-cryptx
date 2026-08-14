@@ -1,0 +1,145 @@
+<?php
+
+namespace CryptX\Admin;
+
+/**
+ * Registers the settings screen and loads the application that renders it.
+ *
+ * The PHP side is deliberately thin: a menu entry, one empty container and the
+ * built assets. Everything the screen knows about the options comes from
+ * SettingsSchema over the REST routes, so there is no second description of
+ * the settings hiding in a template.
+ *
+ * @package CryptX
+ * @since   4.1.0
+ */
+final class SettingsPage
+{
+    private const MENU_SLUG = 'cryptx';
+    private const SCRIPT_HANDLE = 'cryptx-settings';
+
+    private RestController $rest;
+
+    public function __construct()
+    {
+        $this->rest = new RestController();
+    }
+
+    /**
+     * Hooks the screen in.
+     *
+     * @return void
+     */
+    public function register(): void
+    {
+        $this->rest->register();
+
+        if (is_admin()) {
+            add_action('admin_menu', [$this, 'registerMenu']);
+        }
+    }
+
+    /**
+     * Adds the entry under Settings.
+     *
+     * @return void
+     */
+    public function registerMenu(): void
+    {
+        $hook = add_submenu_page(
+            'options-general.php',
+            _x('CryptX', 'CryptX settings page', 'cryptx'),
+            _x('CryptX', 'CryptX settings menu', 'cryptx'),
+            'manage_options',
+            self::MENU_SLUG,
+            [$this, 'render']
+        );
+
+        if ($hook) {
+            add_action('load-' . $hook, [$this, 'onLoad']);
+        }
+    }
+
+    /**
+     * Runs only when our own screen is being loaded.
+     *
+     * @return void
+     */
+    public function onLoad(): void
+    {
+        add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+    }
+
+    /**
+     * Loads the built application.
+     *
+     * @return void
+     */
+    public function enqueueAssets(): void
+    {
+        $assetFile = CRYPTX_DIR_PATH . 'build/index.asset.php';
+
+        if (!is_readable($assetFile)) {
+            add_action('admin_notices', [$this, 'renderMissingBuildNotice']);
+
+            return;
+        }
+
+        $asset = require $assetFile;
+
+        wp_enqueue_script(
+            self::SCRIPT_HANDLE,
+            CRYPTX_DIR_URL . 'build/index.js',
+            $asset['dependencies'] ?? [],
+            $asset['version'] ?? CRYPTX_VERSION,
+            true
+        );
+
+        wp_set_script_translations(self::SCRIPT_HANDLE, 'cryptx');
+
+        $style = CRYPTX_DIR_PATH . 'build/index.css';
+        if (is_readable($style)) {
+            wp_enqueue_style(
+                self::SCRIPT_HANDLE,
+                CRYPTX_DIR_URL . 'build/index.css',
+                ['wp-components'],
+                $asset['version'] ?? CRYPTX_VERSION
+            );
+        }
+
+        // The media library picker for the "image from the media library"
+        // option needs the classic media modal to be present.
+        wp_enqueue_media();
+    }
+
+    /**
+     * Shown when the plugin was installed without its built assets.
+     *
+     * @return void
+     */
+    public function renderMissingBuildNotice(): void
+    {
+        echo '<div class="notice notice-error"><p>';
+        echo esc_html__('CryptX: the settings screen could not be loaded because its built assets are missing. If you installed CryptX from a source checkout, run "npm install && npm run build" in the plugin directory.', 'cryptx');
+        echo '</p></div>';
+    }
+
+    /**
+     * The container the application mounts into.
+     *
+     * @return void
+     */
+    public function render(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'cryptx'));
+        }
+
+        echo '<div class="wrap cryptx-settings-root" id="cryptx-settings-root">';
+        // Shown until the application takes over, and the only thing left if
+        // JavaScript is unavailable.
+        echo '<h1>' . esc_html__('CryptX', 'cryptx') . '</h1>';
+        echo '<p>' . esc_html__('Loading the settings…', 'cryptx') . '</p>';
+        echo '</div>';
+    }
+}

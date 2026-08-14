@@ -7,17 +7,44 @@ final class CryptX
     const NOT_FOUND = false;
     const SUBJECT_IDENTIFIER = "?subject=";
     const ASCII_VALUES_BLACKLIST = ['32', '34', '39', '60', '62', '63', '92', '94', '96', '127'];
+    /** Upper bound for the text rendered into a PNG, see cryptXtinyUrl(). */
+    private const MAX_IMAGE_TEXT_LENGTH = 254;
     private static ?self $instance = null;
     private static array $cryptXOptions = [];
     private static int $imageCounter = 0;
+
+    /** CSS class of the links the click handler in cryptx.js listens for. */
+    private const LINK_CLASS = 'cryptx-link';
+
+    /** Marks a save request as coming from the post meta box. */
+    private const METABOX_NONCE_ACTION = 'cryptx_metabox';
+    private const METABOX_NONCE_FIELD = 'cryptx_metabox_nonce';
+
+    /**
+     * Set as soon as something on this page actually needs them. Version 3.2.7
+     * once had this property ("the javascript will be loaded only if really
+     * needed!"); the 4.0 rewrite lost it and loaded both files on every page,
+     * including pages without a single address.
+     */
+    private static bool $scriptNeeded = false;
+    private static bool $styleNeeded = false;
+
+    /**
+     * Parsed once per request instead of on every call. Both lists are read
+     * from a comma separated option for every filter pass and, in the case of
+     * the whitelist, for every single address found.
+     */
+    private static ?array $excludedIdCache = null;
+    private static ?array $whiteListCache = null;
+
     private const FONT_EXTENSION = 'ttf';
     private const PAYPAL_DONATION_URL = 'https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696';
-    private CryptXSettingsTabs $settingsTabs;
+    private Admin\SettingsPage $settingsPage;
     private Config $config;
 
     private function __construct()
     {
-        $this->settingsTabs = new CryptXSettingsTabs($this);
+        $this->settingsPage = new Admin\SettingsPage();
         $this->config = new Config(get_option('cryptX', []));
         self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
     }
@@ -54,6 +81,11 @@ final class CryptX
      */
     public function startCryptX(): void
     {
+        // The settings screen registers its own menu entry and REST routes.
+        // Doing it here rather than in the constructor keeps the hooks out of
+        // object construction, where they are easy to trigger by accident.
+        $this->settingsPage->register();
+
         $this->checkAndUpdateVersion();
         $this->addUniversalWidgetFilters(); // Add this line
         $this->initializePluginFilters();
@@ -122,6 +154,8 @@ final class CryptX
     {
         add_action('activate_' . CRYPTX_BASENAME, [$this, 'installCryptX']);
         add_action('wp_enqueue_scripts', [$this, 'loadJavascriptFiles']);
+        // Priority 1 so this still runs before wp_print_footer_scripts.
+        add_action('wp_footer', [$this, 'enqueueAssetsIfNeeded'], 1);
     }
 
     /**
@@ -252,33 +286,25 @@ final class CryptX
                     array_change_key_case($attributes, CASE_LOWER),
                     $tag
             );
+            self::resetOptionCaches();
         }
 
-        // Process content (inline the encryptAndLinkContent logic)
-        if (self::$cryptXOptions['autolink'] ?? false) {
-            $content = $this->addLinkToEmailAddresses($content, true);
+        try {
+            // Process content (inline the encryptAndLinkContent logic)
+            if (self::$cryptXOptions['autolink'] ?? false) {
+                $content = $this->addLinkToEmailAddresses($content, true);
+            }
+            $content = $this->findEmailAddressesInContent($content, true);
+            $processedContent = $this->replaceEmailInContent($content, true);
+        } finally {
+            // Restored in a finally block: self::$cryptXOptions is static, so
+            // an exception escaping from here would leave the shortcode's
+            // values in place for the rest of the request.
+            self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
+            self::resetOptionCaches();
         }
-        $content = $this->findEmailAddressesInContent($content, true);
-        $processedContent = $this->replaceEmailInContent($content, true);
-
-        // Reset options to defaults
-        self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
 
         return $processedContent;
-    }
-
-    /**
-     * Encrypts and links content.
-     *
-     * @param string $content The content to be encrypted and linked.
-     *
-     * @return string The encrypted and linked content.
-     */
-    private function encryptAndLinkContent(string $content, bool $shortcode = false): string
-    {
-        $content = $this->findEmailAddressesInContent($content, $shortcode);
-
-        return $this->replaceEmailInContent($content, $shortcode);
     }
 
     /**
@@ -300,37 +326,108 @@ final class CryptX
      */
     public function cryptXtinyUrl(): void
     {
-        $url = (!empty($_SERVER['REQUEST_URI'])) ? esc_url(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+        // sanitize_text_field(), not esc_url(): the latter is an output
+        // escaper and turned "&" into "&#038;" on the way in.
+        $url = (!empty($_SERVER['REQUEST_URI']))
+                ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI']))
+                : '';
         $params = explode('/', $url);
-        if (count($params) > 1) {
-            $tiny_url = $params[count($params) - 2];
-            if ($tiny_url == md5(get_bloginfo('url'))) {
-                $font = CRYPTX_DIR_PATH . 'fonts/' . str_replace(' ', '_', self::$cryptXOptions['c2i_font']);
-                $msg = $params[count($params) - 1];
-                $size = self::$cryptXOptions['c2i_fontSize'];
-                $pad = 1;
-                $rgb = str_replace("#", "", self::$cryptXOptions['c2i_fontRGB']);
-                $red = hexdec(substr($rgb, 0, 2));
-                $grn = hexdec(substr($rgb, 2, 2));
-                $blu = hexdec(substr($rgb, 4, 2));
-                $bounds = ImageTTFBBox($size, 0, $font, "W");
-                $font_height = abs($bounds[7] - $bounds[1]);
-                $bounds = ImageTTFBBox($size, 0, $font, $msg);
-                $width = abs($bounds[4] - $bounds[6]);
-                $height = abs($bounds[7] - $bounds[1]);
-                $offset_y = $font_height + abs(($height - $font_height) / 2) - 1;
-                $offset_x = 0;
-                $image = imagecreatetruecolor($width + ($pad * 2), $height + ($pad * 2));
-                imagesavealpha($image, true);
-                $foreground = ImageColorAllocate($image, $red, $grn, $blu);
-                $background = imagecolorallocatealpha($image, 0, 0, 0, 127);
-                imagefill($image, 0, 0, $background);
-                ImageTTFText($image, $size, 0, round($offset_x + $pad, 0), round($offset_y + $pad, 0), $foreground, $font, esc_html($msg));
-                Header("Content-type: image/png");
-                imagePNG($image);
-                die;
-            }
+
+        if (count($params) < 2) {
+            return;
         }
+
+        if (!hash_equals(md5(get_bloginfo('url')), $params[count($params) - 2])) {
+            return;
+        }
+
+        // Everything below writes an image to the output stream. Any PHP notice
+        // that slips through would end up inside that stream, be served as
+        // image/png and disclose the server path to the visitor. So every
+        // prerequisite is checked first and the request is abandoned quietly
+        // if one is missing.
+        if (!function_exists('imagettfbbox')) {
+            return;
+        }
+
+        $fontFile = self::$cryptXOptions['c2i_font'] ?? $this->getDefaultFont();
+        if (!is_string($fontFile) || $fontFile === '') {
+            return;
+        }
+
+        // basename() keeps the option from reaching outside the fonts folder,
+        // even if it was tampered with in the database.
+        $font = CRYPTX_DIR_PATH . 'fonts/' . basename(str_replace(' ', '_', $fontFile));
+        // is_file(), not is_readable(): the latter is true for a directory as
+        // well, and imagettfbbox() would then emit "Could not read font" with
+        // the full server path -- exactly the disclosure this rewrite removes.
+        if (!is_file($font) || !is_readable($font)) {
+            return;
+        }
+
+        // The text comes straight from the URL. Without a bound, a long request
+        // would size the canvas up accordingly and exhaust the memory limit --
+        // a cheap denial of service. No address is anywhere near this long.
+        $msg = substr(rawurldecode($params[count($params) - 1]), 0, self::MAX_IMAGE_TEXT_LENGTH);
+        if ($msg === '') {
+            return;
+        }
+
+        $size = (int) (self::$cryptXOptions['c2i_fontSize'] ?? 10);
+        $size = max(1, min(96, $size));
+
+        $rgb = ltrim((string) (self::$cryptXOptions['c2i_fontRGB'] ?? '#000000'), '#');
+        if (!preg_match('/^[0-9a-f]{6}$/i', $rgb)) {
+            $rgb = '000000';
+        }
+        $red = hexdec(substr($rgb, 0, 2));
+        $grn = hexdec(substr($rgb, 2, 2));
+        $blu = hexdec(substr($rgb, 4, 2));
+
+        $pad = 1;
+        $bounds = imagettfbbox($size, 0, $font, 'W');
+        if ($bounds === false) {
+            return;
+        }
+        $font_height = abs($bounds[7] - $bounds[1]);
+
+        $bounds = imagettfbbox($size, 0, $font, $msg);
+        if ($bounds === false) {
+            return;
+        }
+        $width = abs($bounds[4] - $bounds[6]);
+        $height = abs($bounds[7] - $bounds[1]);
+        if ($width < 1 || $height < 1) {
+            return;
+        }
+
+        $offset_y = $font_height + abs(($height - $font_height) / 2) - 1;
+        $offset_x = 0;
+
+        $image = imagecreatetruecolor($width + ($pad * 2), $height + ($pad * 2));
+        if ($image === false) {
+            return;
+        }
+        imagesavealpha($image, true);
+        $foreground = imagecolorallocate($image, $red, $grn, $blu);
+        $background = imagecolorallocatealpha($image, 0, 0, 0, 127);
+
+        // Both return false when the palette is exhausted. Passing that on
+        // would emit a warning into the image stream -- the very thing this
+        // method is built to avoid.
+        if ($foreground === false || $background === false) {
+            imagedestroy($image);
+            return;
+        }
+
+        imagefill($image, 0, 0, $background);
+        imagettftext($image, $size, 0, (int) round($offset_x + $pad), (int) round($offset_y + $pad), $foreground, $font, $msg);
+
+        header('Content-Type: image/png');
+        header('X-Content-Type-Options: nosniff');
+        imagepng($image);
+        imagedestroy($image);
+        die;
     }
 
     /**
@@ -400,9 +497,30 @@ final class CryptX
      */
     private function isIdExcluded(int $ID): bool
     {
-        $excludedIds = explode(",", self::$cryptXOptions['excludedIDs']);
+        if (self::$excludedIdCache === null) {
+            $raw = (string) (self::$cryptXOptions['excludedIDs'] ?? '');
+            self::$excludedIdCache = array_map(
+                    'intval',
+                    array_filter(array_map('trim', explode(',', $raw)), 'strlen')
+            );
+        }
 
-        return in_array($ID, $excludedIds);
+        return in_array($ID, self::$excludedIdCache, true);
+    }
+
+    /**
+     * Drops the parsed option lists.
+     *
+     * Both caches mirror values from self::$cryptXOptions. Whenever those are
+     * replaced -- by the shortcode or after saving -- the caches have to go
+     * with them, otherwise a stale exclusion list survives the change.
+     *
+     * @return void
+     */
+    private static function resetOptionCaches(): void
+    {
+        self::$excludedIdCache = null;
+        self::$whiteListCache = null;
     }
 
     /**
@@ -418,6 +536,13 @@ final class CryptX
         global $post;
 
         if (self::$cryptXOptions['disable_rss'] && $this->isRssFeed()) return $content;
+
+        // Nothing to find without an at sign. Bailing out here skips the whole
+        // regular expression machinery for the vast majority of content -- and
+        // on a block theme this filter runs once per block, not once per post.
+        if ($content === null || strpos($content, '@') === false) {
+            return $content;
+        }
 
         // Check if current filter is a widget filter
         $widgetFilters = $this->config->getWidgetFilters();
@@ -445,7 +570,12 @@ final class CryptX
     {
         $emailPattern = "/([_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,}))/i";
 
-        return preg_replace_callback($emailPattern, [$this, 'encodeEmailToLinkText'], $content);
+        $result = preg_replace_callback($emailPattern, [$this, 'encodeEmailToLinkText'], $content);
+
+        // On a PCRE error -- a backtrack or recursion limit on unusually large
+        // or awkward content -- preg_* returns null. Handing that back would
+        // make the whole post body disappear, so the untouched content wins.
+        return $result ?? $content;
     }
 
     /**
@@ -469,7 +599,9 @@ final class CryptX
                 break;
             case 3:
                 $img_url = wp_get_attachment_url(self::$cryptXOptions['alt_uploadedimage']);
-                $text = $this->getUploadedImage($img_url);
+                // false when the attachment was deleted; would have produced
+                // <img src=""> and a TypeError on the string parameter.
+                $text = $img_url === false ? $this->getDefaultLinkText($Match) : $this->getUploadedImage($img_url);
                 self::$imageCounter++;
                 break;
             case 4:
@@ -495,10 +627,18 @@ final class CryptX
      */
     private function inWhiteList(array $Match): bool
     {
-        $whiteList = array_filter(array_map('trim', explode(",", self::$cryptXOptions['whiteList'])));
+        if (self::$whiteListCache === null) {
+            $raw = (string) (self::$cryptXOptions['whiteList'] ?? '');
+            self::$whiteListCache = array_filter(array_map('trim', explode(',', $raw)), 'strlen');
+        }
+
+        if (self::$whiteListCache === []) {
+            return false;
+        }
+
         $tmp = explode(".", $Match[0]);
 
-        return in_array(end($tmp), $whiteList);
+        return in_array(end($tmp), self::$whiteListCache, true);
     }
 
     /**
@@ -508,7 +648,10 @@ final class CryptX
      */
     private function getLinkText(): string
     {
-        return self::$cryptXOptions['alt_linktext'];
+        // Escaped here rather than at the source: the settings page runs this
+        // value through sanitize_text_field(), but a shortcode attribute of the
+        // same name reaches self::$cryptXOptions without passing that filter.
+        return esc_html((string) self::$cryptXOptions['alt_linktext']);
     }
 
     /**
@@ -518,7 +661,15 @@ final class CryptX
      */
     private function getLinkImage(): string
     {
-        return "<img src=\"" . self::$cryptXOptions['alt_linkimage'] . "\" class=\"cryptxImage\" alt=\"" . self::$cryptXOptions['alt_linkimage_title'] . "\" title=\"" . antispambot(self::$cryptXOptions['alt_linkimage_title']) . "\" />";
+        self::$styleNeeded = true;
+        $title = (string) self::$cryptXOptions['alt_linkimage_title'];
+
+        return sprintf(
+                '<img src="%s" class="cryptxImage" alt="%s" title="%s" />',
+                esc_url(self::$cryptXOptions['alt_linkimage']),
+                esc_attr($title),
+                esc_attr(antispambot($title))
+        );
     }
 
     /**
@@ -530,7 +681,18 @@ final class CryptX
      */
     private function getUploadedImage(string $img_url): string
     {
-        return "<img src=\"" . $img_url . "\" class=\"cryptxImage cryptxImage_" . self::$imageCounter . "\" alt=\"" . self::$cryptXOptions['http_linkimage_title'] . " title=\"" . antispambot(self::$cryptXOptions['http_linkimage_title']) . "\" />";
+        self::$styleNeeded = true;
+        $title = (string) self::$cryptXOptions['http_linkimage_title'];
+
+        // The alt attribute used to be missing its closing quote, which ran the
+        // title straight into it and produced broken markup.
+        return sprintf(
+                '<img src="%s" class="cryptxImage cryptxImage_%d" alt="%s" title="%s" />',
+                esc_url($img_url),
+                self::$imageCounter,
+                esc_attr($title),
+                esc_attr(antispambot($title))
+        );
     }
 
     /**
@@ -542,7 +704,16 @@ final class CryptX
      */
     private function getImageFromText(array $Match): string
     {
-        return "<img src=\"" . get_bloginfo('url') . "/" . md5(get_bloginfo('url')) . "/" . antispambot($Match[1]) . "\" class=\"cryptxImage cryptxImage_" . self::$imageCounter . "\" alt=\"" . antispambot($Match[1]) . "\" title=\"" . antispambot($Match[1]) . "\" />";
+        self::$styleNeeded = true;
+        $scrambled = antispambot($Match[1]);
+
+        return sprintf(
+                '<img src="%s" class="cryptxImage cryptxImage_%d" alt="%s" title="%s" />',
+                esc_url(get_bloginfo('url') . '/' . md5(get_bloginfo('url')) . '/' . $scrambled),
+                self::$imageCounter,
+                esc_attr($scrambled),
+                esc_attr($scrambled)
+        );
     }
 
     /**
@@ -558,9 +729,17 @@ final class CryptX
      */
     private function getDefaultLinkText(array $Match): string
     {
-        $text = str_replace("@", self::$cryptXOptions['at'], $Match[1]);
+        // Escaped here for the same reason as in getLinkText(): the settings
+        // page runs both values through wp_kses_post(), but a shortcode
+        // attribute of the same name reaches self::$cryptXOptions unfiltered.
+        // Today only KSES stops an author from putting markup here -- that is
+        // WordPress protecting the plugin, not the plugin protecting itself.
+        $at = esc_html((string) self::$cryptXOptions['at']);
+        $dot = esc_html((string) self::$cryptXOptions['dot']);
 
-        return str_replace(".", self::$cryptXOptions['dot'], $text);
+        $text = str_replace("@", $at, $Match[1]);
+
+        return str_replace(".", $dot, $text);
     }
 
     /**
@@ -574,14 +753,23 @@ final class CryptX
      */
     public function getFilesInDirectory(string $path, array $filter): array
     {
-        $directoryHandle = opendir($path);
-        $directoryContent = array();
-        while ($file = readdir($directoryHandle)) {
-            $fileExtension = substr(strtolower($file), -3);
-            if (in_array($fileExtension, $filter)) {
-                $directoryContent[] = $file;
+        if (!is_dir($path)) {
+            return [];
+        }
+
+        $directoryContent = [];
+        foreach (new \DirectoryIterator($path) as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+            if (in_array(strtolower($file->getExtension()), $filter, true)) {
+                $directoryContent[] = $file->getFilename();
             }
         }
+
+        // readdir() order depends on the file system, which made the default
+        // font differ between servers. Sorting keeps it reproducible.
+        sort($directoryContent);
 
         return $directoryContent;
     }
@@ -606,6 +794,12 @@ final class CryptX
             return null;
         }
 
+        // A mailto link without an at sign cannot carry an address. Cheapest
+        // possible way out before the regular expression runs.
+        if (strpos($content, '@') === false) {
+            return $content;
+        }
+
         // Check if current filter is a widget filter
         $widgetFilters = $this->config->getWidgetFilters();
         $isWidgetContext = in_array(current_filter(), $widgetFilters);
@@ -613,12 +807,20 @@ final class CryptX
         $postId = (is_object($post)) ? $post->ID : -1;
         $isIdExcluded = $this->isIdExcluded($postId);
 
-        $mailtoRegex = '/<a\s+[^>]*href=(["\'])mailto:([^"\']+)\1[^>]*>(.*?)<\/a>/is';
+        // Quoted attribute values may contain ">", so the tag must not simply
+        // end at the first one -- title="a > b" used to cut the match in half
+        // and produce mangled markup. Same construction as in
+        // rewriteOpeningAnchorTag(); the two have to agree on what a tag is.
+        $mailtoRegex = '/<a\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*?href\s*=\s*(["\'])mailto:([^"\']+)\1(?:[^>"\']|"[^"]*"|\'[^\']*\')*>(.*?)<\/a>/is';
 
         // For widgets, always process since there's no specific post context
         // For other content, check exclusion rules
         if ($isWidgetContext || !$isIdExcluded || $shortcode) {
-            $content = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressSecure'], $content);
+            $result = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressSecure'], $content);
+
+            // null means PCRE gave up (backtrack limit). Keeping the original
+            // content is far better than returning null and wiping the page.
+            $content = $result ?? $content;
         }
 
         return $content;
@@ -666,6 +868,13 @@ final class CryptX
     {
         global $post;
 
+        // Eight regular expressions follow, each carrying the full address
+        // pattern. Without an at sign not one of them can match, so this test
+        // saves the entire pass.
+        if (strpos($content, '@') === false) {
+            return $content;
+        }
+
         // Check if current filter is a widget filter
         $widgetFilters = $this->config->getWidgetFilters();
         $isWidgetContext = in_array(current_filter(), $widgetFilters);
@@ -700,7 +909,11 @@ final class CryptX
                 "\\1"
         ];
 
-        return preg_replace($src, $tar, $content);
+        $result = preg_replace($src, $tar, $content);
+
+        // Same reasoning as elsewhere: a PCRE failure yields null, and handing
+        // that on would silently empty the page.
+        return $result ?? $content;
     }
 
     /**
@@ -712,7 +925,12 @@ final class CryptX
         self::$cryptXOptions['admin_notices_deprecated'] = true;
         if (self::$cryptXOptions['excludedIDs'] == "") {
             $tmp = array();
-            $excludes = $wpdb->get_results("SELECT post_id FROM $wpdb->postmeta WHERE meta_key = 'cryptxoff' AND meta_value = 'true'");
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+            $excludes = $wpdb->get_results($wpdb->prepare(
+                    "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %s",
+                    'cryptxoff',
+                    'true'
+            ));
             if (count($excludes) > 0) {
                 foreach ($excludes as $exclude) {
                     $tmp[] = $exclude->post_id;
@@ -721,11 +939,18 @@ final class CryptX
                 self::$cryptXOptions['excludedIDs'] = implode(",", $tmp);
                 update_option('cryptX', self::$cryptXOptions);
                 self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults(); // reread Options
-                $wpdb->query("DELETE FROM $wpdb->postmeta WHERE meta_key = 'cryptxoff'");
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+                $wpdb->query($wpdb->prepare(
+                        "DELETE FROM {$wpdb->postmeta} WHERE meta_key = %s",
+                        'cryptxoff'
+                ));
             }
         }
         if (empty(self::$cryptXOptions['c2i_font'])) {
-            self::$cryptXOptions['c2i_font'] = CRYPTX_DIR_PATH . 'fonts/' . $firstFont[0];
+            // Only the file name is stored here. cryptXtinyUrl() prepends
+            // CRYPTX_DIR_PATH . 'fonts/' itself, so an absolute path would
+            // produce an unusable font path.
+            self::$cryptXOptions['c2i_font'] = $this->getDefaultFont();
         }
         if (empty(self::$cryptXOptions['c2i_fontSize'])) {
             self::$cryptXOptions['c2i_fontSize'] = 10;
@@ -761,11 +986,17 @@ final class CryptX
     public function metaCheckbox(): void
     {
         global $post;
+
+        if (!is_object($post)) {
+            return;
+        }
+
+        wp_nonce_field(self::METABOX_NONCE_ACTION, self::METABOX_NONCE_FIELD);
         ?>
         <label><input type="checkbox" name="disable_cryptx_pageid" <?php if ($this->isIdExcluded($post->ID)) {
                 echo 'checked="checked"';
             } ?>/>
-            Disable CryptX for this post/page</label>
+            <?php esc_html_e('Disable CryptX for this post/page', 'cryptx'); ?></label>
         <?php
     }
 
@@ -778,18 +1009,22 @@ final class CryptX
     public function metaOptionFieldset(): void
     {
         global $post;
-        if (current_user_can('edit_posts')) { ?>
-            <fieldset id="cryptxoption" class="dbx-box">
-                <h3 class="dbx-handle">CryptX</h3>
-                <div class="dbx-content">
-                    <label><input type="checkbox"
-                                  name="disable_cryptx_pageid" <?php if ($this->isIdExcluded($post->ID)) {
-                            echo 'checked="checked"';
-                        } ?>/> Disable CryptX for this post/page</label>
-                </div>
-            </fieldset>
-            <?php
+
+        if (!is_object($post) || !current_user_can('edit_post', $post->ID)) {
+            return;
         }
+        ?>
+        <fieldset id="cryptxoption" class="dbx-box">
+            <h3 class="dbx-handle">CryptX</h3>
+            <div class="dbx-content">
+                <?php wp_nonce_field(self::METABOX_NONCE_ACTION, self::METABOX_NONCE_FIELD); ?>
+                <label><input type="checkbox"
+                              name="disable_cryptx_pageid" <?php if ($this->isIdExcluded($post->ID)) {
+                        echo 'checked="checked"';
+                    } ?>/> <?php esc_html_e('Disable CryptX for this post/page', 'cryptx'); ?></label>
+            </div>
+        </fieldset>
+        <?php
     }
 
     /**
@@ -801,10 +1036,47 @@ final class CryptX
      */
     public function addPostIdToExcludedList(int $postId): void
     {
+        // The meta box has to have taken part in this request. Without this
+        // gate every save that carries no $_POST at all -- REST, WP-CLI,
+        // autosave, the block editor's first pass -- removed the post from the
+        // exclusion list and silently switched CryptX back on for it.
+        //
+        // The gate hangs on the nonce, deliberately not on the checkbox: an
+        // unchecked box is not submitted at all, so "checkbox missing" would
+        // mean both "meta box was not involved" and "user cleared the tick".
+        // Guarding on that would make an excluded post impossible to include
+        // again.
+        if (!isset($_POST[self::METABOX_NONCE_FIELD])) {
+            return;
+        }
+
+        $nonce = sanitize_text_field(wp_unslash($_POST[self::METABOX_NONCE_FIELD]));
+        if (!wp_verify_nonce($nonce, self::METABOX_NONCE_ACTION)) {
+            return;
+        }
+
         $postId = wp_is_post_revision($postId) ?: $postId;
-        $excludedIds = $this->updateExcludedIdsList(self::$cryptXOptions['excludedIDs'], $postId);
-        self::$cryptXOptions['excludedIDs'] = implode(",", array_filter($excludedIds));
-        update_option('cryptX', self::$cryptXOptions);
+
+        if (!current_user_can('edit_post', $postId)) {
+            return;
+        }
+
+        // Read the option fresh instead of writing back self::$cryptXOptions.
+        // That property is static and the shortcode overwrites it while it
+        // runs; storing it wholesale could persist a shortcode's temporary
+        // values. Only the one key we are responsible for is touched.
+        $options = get_option('cryptX', []);
+        if (!is_array($options)) {
+            $options = [];
+        }
+
+        $excludedIds = $this->updateExcludedIdsList((string) ($options['excludedIDs'] ?? ''), $postId);
+        $options['excludedIDs'] = implode(',', array_filter($excludedIds));
+
+        update_option('cryptX', $options);
+
+        self::$cryptXOptions['excludedIDs'] = $options['excludedIDs'];
+        self::resetOptionCaches();
     }
 
     /**
@@ -892,7 +1164,7 @@ final class CryptX
             echo '<div id="message" class="updated fade">';
         }
 
-        echo esc_html($message, 'cryptx') . "</div>";
+        echo esc_html($message) . "</div>";
     }
 
     /**
@@ -944,15 +1216,48 @@ final class CryptX
     }
 
     /**
-     * Loads Javascript files required for CryptX functionality.
+     * Registers the frontend assets.
+     *
+     * Registering is not loading. Whether the files end up on the page is
+     * decided in enqueueAssetsIfNeeded() once the content has been processed
+     * and it is known whether anything was encrypted at all.
+     *
+     * One exception: with the script placed in the head (load_java = 0) that
+     * decision cannot be deferred -- the head is sent before the content runs.
+     * In that configuration the script is enqueued unconditionally, as before.
      *
      * @return void
      */
     public function loadJavascriptFiles(): void
     {
-        wp_enqueue_script('cryptx-js', CRYPTX_DIR_URL . 'js/cryptx.min.js', false, CRYPTX_VERSION, self::$cryptXOptions['load_java']);
+        $inFooter = !empty(self::$cryptXOptions['load_java']);
+
+        wp_register_script('cryptx-js', CRYPTX_DIR_URL . 'js/cryptx.min.js', [], CRYPTX_VERSION, $inFooter);
         wp_localize_script('cryptx-js', 'cryptxConfig', SecureEncryption::getJavaScriptConfig());
-        wp_enqueue_style('cryptx-styles', CRYPTX_DIR_URL . 'css/cryptx.css', false, CRYPTX_VERSION);;
+        wp_register_style('cryptx-styles', CRYPTX_DIR_URL . 'css/cryptx.css', [], CRYPTX_VERSION);
+
+        if (!$inFooter) {
+            wp_enqueue_script('cryptx-js');
+            wp_enqueue_style('cryptx-styles');
+        }
+    }
+
+    /**
+     * Loads the assets that this page turned out to need.
+     *
+     * Runs late, in the footer, when every filter has done its work.
+     *
+     * @return void
+     */
+    public function enqueueAssetsIfNeeded(): void
+    {
+        if (self::$scriptNeeded) {
+            wp_enqueue_script('cryptx-js');
+        }
+
+        if (self::$styleNeeded) {
+            wp_enqueue_style('cryptx-styles');
+        }
     }
 
     /**
@@ -973,6 +1278,19 @@ final class CryptX
             }
             if (isset(self::$cryptXOptions['c2i_font'])) {
                 unset(self::$cryptXOptions['c2i_font']);
+            }
+            // Installations from before 4.0.12 hold a password derived from
+            // AUTH_KEY and SECURE_AUTH_KEY, and that value is published in the
+            // markup of every page. Since site_url is public, an attacker can
+            // test candidate keys offline -- above all the placeholders from
+            // wp-config-sample.php that unattended installations still carry.
+            // Dropping it here lets Config::getEncryptionPassword() mint a
+            // random one. The price: links on pages already sitting in a cache
+            // stop resolving until that cache turns over, which is why this
+            // happens once, at the version bump, and is called out in the
+            // upgrade notice.
+            if (isset(self::$cryptXOptions['encryption_password'])) {
+                unset(self::$cryptXOptions['encryption_password']);
             }
             if (isset(self::$cryptXOptions['c2i_fontRGB'])) {
                 self::$cryptXOptions['c2i_fontRGB'] = "#" . self::$cryptXOptions['c2i_fontRGB'];
@@ -1146,27 +1464,6 @@ final class CryptX
     }
 
     /**
-     * Generates hash using secure or legacy encryption based on settings
-     *
-     * @param string $inputString
-     * @return string
-     */
-    private function generateSecureHashFromString(string $inputString): string
-    {
-        if ($this->config->isSecureEncryptionEnabled()) {
-            try {
-                $password = $this->config->getEncryptionPassword();
-                return SecureEncryption::encrypt($inputString, $password);
-            } catch (\Exception $e) {
-                // Fallback to legacy encryption
-                return $this->generateHashFromString($inputString);
-            }
-        }
-
-        return $this->generateHashFromString($inputString);
-    }
-
-    /**
      * Enhanced email encryption with security validation
      *
      * @param array $searchResults
@@ -1176,7 +1473,6 @@ final class CryptX
     {
         $originalValue = $searchResults[0];  // Full match
         $emailAddress = sanitize_email($searchResults[2]);   // Email address
-        $linkText = esc_html($searchResults[3]);       // Link text
 
         if (strpos($emailAddress, '@') === self::NOT_FOUND) {
             return $originalValue;
@@ -1191,6 +1487,8 @@ final class CryptX
         // Apply JavaScript handler if enabled
         if (!empty(self::$cryptXOptions['java'])) {
             $encryptionMode = $this->config->getEncryptionMode();
+            $payloadMode = 'legacy';
+            $password = '';
 
             // Determine which encryption method to use
             if ($encryptionMode === 'secure' &&
@@ -1202,22 +1500,45 @@ final class CryptX
                     $password = $this->config->getEncryptionPassword();
                     $mailtoUrl = 'mailto:' . $emailAddress;
                     $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
-
-                    $javaHandler = "javascript:secureDecryptAndNavigate('" .
-                            esc_js($encryptedEmail) . "', '" .
-                            esc_js($password) . "')";
+                    $payloadMode = 'secure';
                 } catch (\Exception $e) {
                     // Fallback to legacy if secure encryption fails
                     $encryptedEmail = $this->generateHashFromString($emailAddress);
-                    $javaHandler = "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
+                    $password = '';
                 }
             } else {
                 // Use legacy encryption (original algorithm)
                 $encryptedEmail = $this->generateHashFromString($emailAddress);
-                $javaHandler = "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
             }
 
-            $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
+            self::$scriptNeeded = true;
+
+            if ($this->getLinkMode() === 'data') {
+                // Preferred form: the payload travels in data attributes and a
+                // delegated click handler in cryptx.js does the work. A
+                // "javascript:" URI would be blocked outright by any halfway
+                // strict Content-Security-Policy, taking every CryptX link on
+                // the page with it -- silently.
+                $attributes = sprintf(
+                        ' data-cx="%s" data-cxm="%s"',
+                        esc_attr($encryptedEmail),
+                        esc_attr($payloadMode)
+                );
+                if ($payloadMode === 'secure') {
+                    $attributes .= sprintf(' data-cxk="%s"', esc_attr($password));
+                }
+
+                $return = str_replace('mailto:' . $emailAddress, '#', $originalValue);
+                $return = $this->addAttributesToAnchor($return, $attributes);
+                $return = $this->addClassToAnchor($return, self::LINK_CLASS);
+            } else {
+                // Legacy form, kept for installations that depend on it.
+                $javaHandler = $payloadMode === 'secure'
+                        ? "javascript:secureDecryptAndNavigate('" . esc_js($encryptedEmail) . "', '" . esc_js($password) . "')"
+                        : "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
+
+                $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
+            }
         } else {
             // Fallback to antispambot if JavaScript is not enabled
             $return = str_replace('mailto:' . $emailAddress,
@@ -1226,37 +1547,217 @@ final class CryptX
 
         // Add CSS attributes if specified
         if (!empty(self::$cryptXOptions['css_id'])) {
-            $cssId = esc_attr(self::$cryptXOptions['css_id']);
-            if (preg_match('/<a\s+[^>]*\bid\s*=\s*["\']/i', $return)) {
-                $return = preg_replace('/(<a\s+[^>]*\bid\s*=\s*(["\']))(.*?)\2/i', '$1$3 ' . $cssId . '$2', $return);
-            } else {
-                $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                        '$1 id="' . $cssId . '"$2', $return);
-            }
+            // Guarded like every other preg_* call site in this class: a PCRE
+            // error yields null, and $return is declared string.
+            $return = $this->addIdToAnchor($return, self::$cryptXOptions['css_id']);
         }
 
         if (!empty(self::$cryptXOptions['css_class'])) {
-            $cssClass = esc_attr(self::$cryptXOptions['css_class']);
-            if (preg_match('/<a\s+[^>]*\bclass\s*=\s*["\']/i', $return)) {
-                $return = preg_replace('/(<a\s+[^>]*\bclass\s*=\s*(["\']))(.*?)\2/i', '$1$3 ' . $cssClass . '$2', $return);
-            } else {
-                $return = preg_replace('/(<a\s+[^>]*)(>)/i',
-                        '$1 class="' . $cssClass . '"$2', $return);
-            }
+            $return = $this->addClassToAnchor($return, self::$cryptXOptions['css_class']);
         }
 
         return $return;
     }
 
     /**
-     * Secure URL validation
+     * Runs a sample through the real processing chain for the settings preview.
      *
-     * @param string $url
-     * @return bool
+     * Deliberately not a reimplementation: the preview calls the same three
+     * filters the front end calls, with the same encryption. A separate
+     * "preview renderer" would drift away from the truth sooner or later, and
+     * a preview that lies is worse than none.
+     *
+     * Nothing is written. Both the static option list and the Config instance
+     * are swapped for the duration and restored in a finally block -- Config
+     * matters because the encryption path reads its mode and password from
+     * there, not from the static list.
+     *
+     * @param array $overrides Option values as they stand in the unsaved form.
+     * @param string $content The sample content.
+     *
+     * @return string The processed markup.
      */
-    private function isValidUrl(string $url): bool
+    public function renderPreviewMarkup(array $overrides, string $content): string
     {
-        return SecureEncryption::validateUrl($url);
+        $previousOptions = self::$cryptXOptions;
+        $previousConfig = $this->config;
+
+        // Make sure a secret exists before the swap, and mint it through the
+        // REAL Config if it does not.
+        //
+        // Config::getEncryptionPassword() writes when it has to mint, and
+        // Config::save() stores the whole option array -- which, on the
+        // throwaway Config below, is the administrator's unsaved form state.
+        // A preview would then silently persist settings that were only being
+        // tried out. The window is real: updateCryptXSettings() drops the
+        // secret on every version bump, and the settings screen is the first
+        // place an administrator goes after an update.
+        $stored = $this->loadCryptXOptionsWithDefaults();
+
+        if (empty($stored['encryption_password'])) {
+            // Mint through a Config built from the STORED options, and carry the
+            // result into $merged by hand.
+            //
+            // Doing it through the live Config instead was not enough: that one
+            // holds an in-memory copy taken at startup, so it can believe it has
+            // a password while the row no longer does. It then writes nothing,
+            // $merged is still without a secret, and the throwaway Config below
+            // mints -- persisting the unsaved form along with it. A test that
+            // watches pre_update_option_cryptX found exactly that.
+            $stored['encryption_password'] = (new Config($stored))->getEncryptionPassword();
+        }
+
+        $merged = wp_parse_args($overrides, $stored);
+
+        self::$cryptXOptions = $merged;
+        $this->config = new Config($merged);
+        self::resetOptionCaches();
+
+        try {
+            if (!empty(self::$cryptXOptions['autolink'])) {
+                $content = $this->addLinkToEmailAddresses($content, true);
+            }
+
+            $content = $this->findEmailAddressesInContent($content, true);
+
+            return (string) $this->replaceEmailInContent($content, true);
+        } finally {
+            self::$cryptXOptions = $previousOptions;
+            $this->config = $previousConfig;
+            self::resetOptionCaches();
+        }
+    }
+
+    /**
+     * Which link form the encrypted address is delivered in.
+     *
+     * 'data' puts the payload into data attributes and lets a delegated click
+     * handler take over -- the only form that survives a Content-Security-Policy.
+     * 'js' is the historical "javascript:" URI, offered under Advanced for
+     * installations that depend on the old behaviour.
+     *
+     * @return string Either 'data' or 'js'.
+     */
+    private function getLinkMode(): string
+    {
+        $mode = (string) (self::$cryptXOptions['link_mode'] ?? 'data');
+
+        return $mode === 'js' ? 'js' : 'data';
+    }
+
+    /**
+     * Inserts additional attributes into the opening tag of an anchor.
+     *
+     * @param string $html The anchor markup.
+     * @param string $attributes Attribute string, starting with a space.
+     *
+     * @return string The markup with the attributes added.
+     */
+    private function addAttributesToAnchor(string $html, string $attributes): string
+    {
+        return $this->rewriteOpeningAnchorTag(
+                $html,
+                static fn(string $tag): string => preg_replace('/(\s*\/?>)$/', $attributes . '$1', $tag, 1) ?? $tag
+        );
+    }
+
+    /**
+     * Adds a class to an anchor, keeping any class that is already there.
+     *
+     * @param string $html The anchor markup.
+     * @param string $class The class to add.
+     *
+     * @return string The markup with the class added.
+     */
+    private function addClassToAnchor(string $html, string $class): string
+    {
+        $class = esc_attr($class);
+
+        return $this->rewriteOpeningAnchorTag(
+                $html,
+                function (string $tag) use ($class): string {
+                    // (?:^|\s) rather than \b: a word boundary also sits
+                    // between the quote and the "c" of an attribute value such
+                    // as data-x="class='y'", so \bclass would bind to the text
+                    // inside that value. Requiring whitespace before the name
+                    // makes this an attribute rather than any occurrence of the
+                    // word -- and it holds no matter which attribute comes
+                    // first, which the greedy and the lazy variant each got
+                    // wrong in one of the two orders.
+                    if (preg_match('/(?:^|\s)class\s*=\s*(["\'])(.*?)\1/i', $tag)) {
+                        return preg_replace(
+                                '/((?:^|\s)class\s*=\s*(["\']))(.*?)\2/i',
+                                '$1$3 ' . $class . '$2',
+                                $tag,
+                                1
+                        ) ?? $tag;
+                    }
+
+                    return preg_replace('/(\s*\/?>)$/', ' class="' . $class . '"$1', $tag, 1) ?? $tag;
+                }
+        );
+    }
+
+    /**
+     * Applies a rewrite to the opening tag of the first anchor only.
+     *
+     * Regular expressions on HTML are a poor tool, and this is the narrow case
+     * where it is still defensible: the markup comes from CryptX's own mailto
+     * pattern, so there is exactly one anchor and the payload is escaped before
+     * it gets here. Isolating the opening tag keeps the rewrite from reaching
+     * into attribute values or into the link text.
+     *
+     * @param string $html The anchor markup.
+     * @param callable $rewrite Receives the opening tag, returns the new one.
+     *
+     * @return string The markup with the rewritten opening tag.
+     */
+    private function rewriteOpeningAnchorTag(string $html, callable $rewrite): string
+    {
+        // Quoted attribute values may legitimately contain ">", so a plain
+        // [^>]* would end the tag too early and splice the new attribute into
+        // the middle of somebody else's title.
+        $openingTag = '/<a\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/i';
+
+        if (!preg_match($openingTag, $html, $matches, PREG_OFFSET_CAPTURE)) {
+            return $html;
+        }
+
+        $tag = $matches[0][0];
+        $offset = $matches[0][1];
+        $rewritten = $rewrite($tag);
+
+        return substr($html, 0, $offset) . $rewritten . substr($html, $offset + strlen($tag));
+    }
+
+    /**
+     * Adds an id to an anchor, keeping any id that is already there.
+     *
+     * @param string $html The anchor markup.
+     * @param string $id The id to add.
+     *
+     * @return string The markup with the id added.
+     */
+    private function addIdToAnchor(string $html, string $id): string
+    {
+        $id = esc_attr($id);
+
+        return $this->rewriteOpeningAnchorTag(
+                $html,
+                function (string $tag) use ($id): string {
+                    // Same reasoning as in addClassToAnchor().
+                    if (preg_match('/(?:^|\s)id\s*=\s*(["\'])(.*?)\1/i', $tag)) {
+                        return preg_replace(
+                                '/((?:^|\s)id\s*=\s*(["\']))(.*?)\2/i',
+                                '$1$3 ' . $id . '$2',
+                                $tag,
+                                1
+                        ) ?? $tag;
+                    }
+
+                    return preg_replace('/(\s*\/?>)$/', ' id="' . $id . '"$1', $tag, 1) ?? $tag;
+                }
+        );
     }
 
 }

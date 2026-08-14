@@ -1,0 +1,455 @@
+/*
+ * Styles for the CryptX settings screen.
+ *
+ * Mobile first: the rules below the media query describe the phone, and the
+ * query adds what a wider screen allows.
+ *
+ * On colour there is one rule worth stating, because getting it wrong was
+ * visible on the first attempt: this screen must NOT react to
+ * prefers-color-scheme. The WordPress admin has no dark mode of its own, so on
+ * a phone set to dark the page around us stays light. Rules behind that query
+ * gave us dark boxes with the page's dark text inside -- unreadable. Anything
+ * dark here is dark on purpose, at every setting, and always sets its own text
+ * colour alongside its background.
+ *
+ * Accent colours come from --wp-admin-theme-color so the screen follows the
+ * chosen admin colour scheme. That variable is for accents only: borders,
+ * active states, links. Body text uses the admin greys, never the accent.
+ */
+
+.cryptx-settings {
+	--cryptx-gap: 16px;
+	--cryptx-radius: 4px;
+	--cryptx-text: #1d2327;
+	--cryptx-muted: #50575e;
+	--cryptx-border: #c3c4c7;
+	--cryptx-border-light: #dcdcde;
+	--cryptx-surface: #fff;
+	--cryptx-code-bg: #1d2327;
+	--cryptx-code-text: #f0f0f1;
+	max-width: 900px;
+	margin-inline: auto;
+	padding-inline: 4px;
+	color: var(--cryptx-text);
+}
+
+.cryptx-settings__header h1 {
+	margin-bottom: 4px;
+	font-size: 1.6rem;
+	line-height: 1.3;
+}
+
+.cryptx-settings__intro {
+	margin: 0 0 var(--cryptx-gap);
+	max-width: 60ch;
+	/* Body text, not an accent. This used to pull the admin theme colour and
+	   rendered the whole introduction in link blue. */
+	color: var(--cryptx-muted);
+}
+
+/* ------------------------------------------------------------------ tabs -- */
+
+.cryptx-tabs {
+	position: relative;
+	display: flex;
+	gap: 2px;
+	overflow-x: auto;
+	scrollbar-width: thin;
+	border-bottom: 1px solid var(--cryptx-border);
+	margin-bottom: var(--cryptx-gap);
+	-webkit-overflow-scrolling: touch;
+	/* Tells the reader there is more to the right, instead of letting a tab
+	   end mid-word with no explanation. */
+	mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+}
+
+/* Once the last tab is reached the hint would be a lie, so it is removed. */
+.cryptx-tabs.is-scrolled-end {
+	mask-image: none;
+}
+
+.cryptx-tabs__tab {
+	flex: 0 0 auto;
+	appearance: none;
+	background: none;
+	border: 0;
+	border-bottom: 3px solid transparent;
+	/* Tight enough that all five tabs fit a 390px phone without scrolling; the
+	   scroll behaviour stays for narrower screens and longer translations. */
+	padding: 12px 10px;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--cryptx-muted);
+	cursor: pointer;
+	/* Comfortably tappable without hunting for it. */
+	min-height: 44px;
+	white-space: nowrap;
+	scroll-margin-inline: 16px;
+}
+
+.cryptx-tabs__tab:hover {
+	color: var(--wp-admin-theme-color, #2271b1);
+}
+
+.cryptx-tabs__tab.is-active {
+	border-bottom-color: var(--wp-admin-theme-color, #2271b1);
+	color: var(--wp-admin-theme-color, #2271b1);
+}
+
+.cryptx-tabs__tab:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: -2px;
+	border-radius: 2px;
+}
+
+.cryptx-settings__tab-description {
+	margin: 0 0 var(--cryptx-gap);
+	max-width: 60ch;
+	color: var(--cryptx-muted);
+}
+
+/* -------------------------------------------------------------- sections -- */
+
+.cryptx-section,
+.cryptx-preview {
+	margin-bottom: var(--cryptx-gap);
+}
+
+.cryptx-section__title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--cryptx-text);
+}
+
+.cryptx-section__fields {
+	display: grid;
+	gap: 24px;
+}
+
+/* The help text under a control is the reason this screen exists; keep it
+   readable rather than letting it stretch across a wide monitor. */
+.cryptx-field .components-base-control__help,
+.cryptx-field .components-radio-control__option label {
+	max-width: 62ch;
+}
+
+.cryptx-field .components-base-control__help {
+	font-style: normal;
+	color: var(--cryptx-muted);
+}
+
+/* --------------------------------------------------------------- preview -- */
+
+.cryptx-preview__block + .cryptx-preview__block {
+	margin-top: var(--cryptx-gap);
+}
+
+.cryptx-preview h3 {
+	margin: 0 0 6px;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--cryptx-muted);
+}
+
+/* This box stands in for the visitor's page, so it is light whatever the
+   phone is set to -- and it states its own text colour rather than inheriting
+   one that might not suit the background. */
+.cryptx-preview__rendered {
+	padding: 12px;
+	border: 1px solid var(--cryptx-border-light);
+	border-radius: var(--cryptx-radius);
+	background: var(--cryptx-surface);
+	color: var(--cryptx-text);
+	word-break: break-word;
+}
+
+.cryptx-preview__source {
+	margin: 0;
+	padding: 12px;
+	border-radius: var(--cryptx-radius);
+	background: var(--cryptx-code-bg);
+	color: var(--cryptx-code-text);
+	font-size: 12px;
+	line-height: 1.6;
+	/* The encrypted payload is one long unbreakable run of characters, and on
+	   a phone it filled the whole screen. Capped and scrollable instead. */
+	max-height: 40vh;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.cryptx-preview__verdict {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: var(--cryptx-gap) 0 0;
+	padding: 10px 12px;
+	border-radius: var(--cryptx-radius);
+	border-left: 4px solid transparent;
+	font-weight: 500;
+}
+
+.cryptx-preview__verdict::before {
+	font-weight: 700;
+	line-height: 1.5;
+}
+
+.cryptx-preview__verdict.is-good {
+	border-left-color: #00a32a;
+	background: #edfaef;
+	color: #00450c;
+}
+
+.cryptx-preview__verdict.is-good::before {
+	content: "✓";
+}
+
+.cryptx-preview__verdict.is-warning {
+	border-left-color: #dba617;
+	background: #fcf9e8;
+	color: #614f00;
+}
+
+.cryptx-preview__verdict.is-warning::before {
+	content: "!";
+}
+
+/* Not the same as a warning: here the plugin is doing nothing at all for this
+   address, and the colour should say so before the sentence does. */
+.cryptx-preview__verdict.is-bad {
+	border-left-color: #d63638;
+	background: #fcf0f1;
+	color: #8a2424;
+}
+
+.cryptx-preview__verdict.is-bad::before {
+	content: "✕";
+}
+
+.cryptx-preview__error {
+	color: #8a2424;
+}
+
+/* ---------------------------------------------------------------- fields -- */
+
+.cryptx-color {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.cryptx-color input[type="color"] {
+	width: 44px;
+	height: 40px;
+	padding: 2px;
+	border: 1px solid #949494;
+	border-radius: var(--cryptx-radius);
+	background: none;
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+
+.cryptx-color .components-base-control {
+	flex: 1 1 auto;
+	margin: 0;
+}
+
+.cryptx-media__preview {
+	max-width: 160px;
+	height: auto;
+	border: 1px solid var(--cryptx-border-light);
+	border-radius: var(--cryptx-radius);
+}
+
+.cryptx-media__buttons {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+/* --------------------------------------------------------------- actions -- */
+
+.cryptx-settings__actions {
+	margin-top: var(--cryptx-gap);
+	padding: 12px 0;
+	border-top: 1px solid var(--cryptx-border-light);
+	background: transparent;
+}
+
+/*
+ * The bar only follows the scroll while there is something to save. A bar that
+ * sticks permanently covers the last option on a phone -- which it did -- and
+ * it does so to offer a button that cannot be pressed.
+ */
+.cryptx-settings__actions.is-dirty {
+	position: sticky;
+	bottom: 0;
+	z-index: 10;
+	padding: 12px;
+	margin-inline: -4px;
+	background: var(--cryptx-surface);
+	border-top: 1px solid var(--cryptx-border);
+	box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+	padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+.cryptx-settings__status {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: var(--cryptx-muted);
+}
+
+.cryptx-settings__status.is-dirty {
+	color: #614f00;
+	font-weight: 500;
+}
+
+.cryptx-loading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 24px 0;
+	color: var(--cryptx-muted);
+}
+
+/* ------------------------------------------------------------------ help -- */
+
+.cryptx-help__snippet {
+	margin: 0 0 12px;
+	padding: 12px;
+	border-radius: var(--cryptx-radius);
+	background: var(--cryptx-code-bg);
+	color: var(--cryptx-code-text);
+	border: 1px solid var(--cryptx-code-bg);
+	font-size: 12px;
+	line-height: 1.6;
+	/* Wrapped rather than scrolled sideways. A shortcode is meant to be read
+	   and copied, and on a phone the tail of it was simply off the edge with
+	   nothing to suggest it could be dragged into view. Line breaks written
+	   into the snippet are kept. */
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.cryptx-help__note {
+	margin: 0;
+	color: var(--cryptx-muted);
+	font-size: 12px;
+}
+
+.cryptx-help__release + .cryptx-help__release {
+	margin-top: var(--cryptx-gap);
+	padding-top: var(--cryptx-gap);
+	border-top: 1px solid var(--cryptx-border-light);
+}
+
+.cryptx-help__release h3 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--cryptx-text);
+}
+
+.cryptx-help__badge {
+	padding: 1px 8px;
+	border-radius: 10px;
+	background: #edfaef;
+	color: #00450c;
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+	text-transform: lowercase;
+}
+
+.cryptx-help__changelog ul {
+	margin: 0;
+	padding-left: 20px;
+	list-style: disc;
+}
+
+.cryptx-help__changelog li {
+	margin-bottom: 6px;
+	line-height: 1.6;
+	/* A bare support-forum URL in the older entries is longer than the column
+	   and pushed the whole card sideways. */
+	overflow-wrap: anywhere;
+}
+
+.cryptx-help__changelog code {
+	padding: 1px 4px;
+	border-radius: 2px;
+	background: #f0f0f1;
+	font-size: 12px;
+}
+
+.cryptx-help__older {
+	margin-top: var(--cryptx-gap);
+	padding-top: var(--cryptx-gap);
+	border-top: 1px solid var(--cryptx-border-light);
+}
+
+.cryptx-help__older > summary {
+	/* Large enough to hit with a thumb, and obviously a control rather than a
+	   heading that happens to have a triangle next to it. */
+	min-height: 44px;
+	display: flex;
+	align-items: center;
+	cursor: pointer;
+	color: var(--wp-admin-theme-color, #2271b1);
+	font-weight: 500;
+}
+
+.cryptx-help__older > summary:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.cryptx-help__older[open] > summary {
+	margin-bottom: var(--cryptx-gap);
+}
+
+/* ----------------------------------------------------- wider than a phone -- */
+
+@media (min-width: 783px) {
+	.cryptx-settings {
+		padding-inline: 0;
+	}
+
+	.cryptx-settings__header h1 {
+		font-size: 2rem;
+	}
+
+	.cryptx-section__fields {
+		gap: 28px;
+	}
+
+	.cryptx-tabs {
+		/* Everything fits, so the scroll hint has nothing to announce. */
+		mask-image: none;
+	}
+
+	.cryptx-tabs__tab {
+		padding: 12px 14px;
+	}
+
+	.cryptx-settings__actions.is-dirty {
+		margin-inline: 0;
+		padding-inline: 0;
+		box-shadow: none;
+	}
+}
+
+/* --------------------------------------------------------- reduced motion -- */
+
+@media (prefers-reduced-motion: reduce) {
+	.cryptx-tabs {
+		scroll-behavior: auto;
+	}
+}

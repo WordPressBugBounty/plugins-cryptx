@@ -3,9 +3,9 @@ Contributors: d3395
 Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
-Tested up to: 6.9
-Stable tag: 4.0.11
-Requires PHP: 8.3
+Tested up to: 7.0
+Stable tag: 4.1.0
+Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -32,9 +32,12 @@ CryptX protects your email addresses from spambots while keeping them readable a
 
 == Screenshots ==
 
-1. Plugin settings - General configuration options
-2. Email encryption methods and display options
-3. Advanced settings and whitelist configuration
+1. Protection: where CryptX looks for addresses, and how it hides them. Every option is explained where you set it.
+2. A live preview shows what visitors see and what a spam bot finds in the source, and warns when a setting leaves an address readable.
+3. Exceptions: single posts, file names that look like addresses, and feeds.
+4. Advanced settings. The defaults are right for almost every site.
+5. Help: shortcode, template functions, and what changed in each release.
+6. The settings screen on a phone.
 
 == Installation ==
 
@@ -68,6 +71,38 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.1.0 =
+* **New** the settings screen has been rebuilt from scratch: mobile first, with every option explained where you set it
+* **New** a live preview shows what visitors see and what a spam bot finds in the source, updated as you change settings -- including a warning when a setting leaves an address readable
+* the settings are now grouped by what you want to achieve: Protection, Appearance, Exceptions, Advanced, Help
+* the link format and the PBKDF2 iteration count can now be set in the interface; previously they could only be changed in the database
+* "Use secure encryption" and "Encryption mode" were two switches for one decision and could contradict each other. They are now a single choice
+* switching tabs no longer reloads the page, and the address bar still carries the tab so links and bookmarks keep working
+* unsaved changes are kept when switching tabs, and leaving the page warns about them
+= 4.0.12 =
+* **Security** fixed an issue where a failed PNG request could print PHP warnings into the image stream, disclosing the server path, and where a long request URL could make the plugin allocate hundreds of megabytes -- an unauthenticated way to exhaust the memory limit
+* **Security** the exclusion setting "Disable CryptX for this post/page" is now protected by a nonce and a capability check
+* **Fixed** "Disable CryptX for this post/page" no longer gets silently cleared. Any save that did not come from the classic editor form -- the REST API, WP-CLI, an autosave, the block editor -- used to drop the post from the exclusion list
+* **Performance** the encryption key is now derived once per page instead of once per email address. On a page with 20 addresses in secure mode this cuts about 1.8 seconds of server time
+* **Performance** javascript and stylesheet are only loaded when the page actually contains a protected address
+* Encrypted links no longer use a "javascript:" URI, which any stricter Content-Security-Policy blocks outright. The payload now travels in data attributes and a click handler takes over. Links already delivered keep working; set the option "link_mode" to "js" to get the old form back
+* The encryption password is no longer derived from AUTH_KEY. It is published in the page markup, so it is now a random secret instead. Existing installations keep their stored value
+* added uninstall.php -- the plugin option used to stay in the database forever after deletion
+* fixed broken markup in the image variant, where the alt attribute was missing its closing quote
+* content is no longer lost if a regular expression hits the PCRE backtrack limit
+* **Security** the PBKDF2 iteration count from the settings is now validated. A non-numeric or zero value made the front end fatal on every page carrying an address
+* **Fixed** a font whose name ends in a letter that also appears in ".ttf" was shown truncated in the settings ("Liberation Seri")
+* **Fixed** anchors carrying a ">" inside an attribute value are no longer mangled when the address is encrypted
+* **Fixed** the changelog tab no longer breaks if the readme cannot be parsed
+* **Fixed** presentation settings were losing a backslash on every save
+* declared compatibility with WordPress 7.0
+* **Licensing** replaced the bundled fonts Arial, Times New Roman and Verdana with the freely licensed Liberation Sans, Liberation Serif and DejaVu Sans. The previous files were the original Monotype/Microsoft typefaces, whose licence does not allow redistribution inside a GPL package. If you had selected one of them, CryptX falls back to the first available font automatically.
+* fixed the plugin version constant, which still read 4.0.10 in version 4.0.11 and therefore kept browsers from loading the updated javascript
+* corrected the declared PHP requirement to 8.1, matching the check performed at runtime
+* fixed the minimum WordPress version shown in the error notice (said 5.0, checked for 6.7)
+* fixed a PHP warning caused by an undefined variable when activating the plugin without a font setting
+* the default font is now chosen in a reproducible order instead of depending on the file system
+* the shortcode documentation listed the attributes "linktext" and "subject", which were never evaluated. It now describes the attributes that actually work.
 = 4.0.11 =
 * fixed a bug in the deprecated "encryptx" function (thx to <a href="https://wordpress.org/support/users/hillyfov/">Machtnix</a>)
 = 4.0.10 =
@@ -247,6 +282,13 @@ For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/
 * Add Option to disable CryptX on single post/page
 
 == Upgrade Notice ==
+
+= 4.1.0 =
+The settings screen is completely new. Your settings are carried over unchanged; nothing needs to be reconfigured.
+
+= 4.0.12 =
+Contains two security fixes; install promptly. Note: "Disable CryptX for this post/page" was silently cleared by any save outside the classic editor. Check your exclusions after updating -- old entries cannot be recovered.
+
 
 = 4.0.0 =
 Major update with improved PHP 8.1+ compatibility, enhanced performance, and modernized codebase. Please test on a staging site first. Minimum requirements: WordPress 6.7+ and PHP 8.1+.
