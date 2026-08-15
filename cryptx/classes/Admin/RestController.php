@@ -11,7 +11,7 @@ use WP_REST_Server;
 /**
  * The endpoints the settings screen talks to.
  *
- * Three routes, all behind the same gate: the capability that guards the
+ * Four routes, all behind the same gate: the capability that guards the
  * settings page itself. WordPress checks the REST nonce before any of this
  * runs, and apiFetch in the browser sends it automatically.
  *
@@ -39,7 +39,7 @@ final class RestController
     }
 
     /**
-     * Declares the three routes.
+     * Declares the four routes.
      *
      * @return void
      */

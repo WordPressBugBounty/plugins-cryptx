@@ -4,7 +4,7 @@ Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_i
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
 Tested up to: 7.0
-Stable tag: 4.1.0
+Stable tag: 4.1.1
 Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -46,6 +46,24 @@ CryptX protects your email addresses from spambots while keeping them readable a
 3. Configure the plugin settings under Settings > CryptX
 4. Your email addresses will now be automatically protected!
 
+== Development ==
+
+The settings screen is built with React and the WordPress component library. The
+human-readable source ships with the plugin, so the compiled files can be
+rebuilt and compared:
+
+1. `cd` into the plugin directory
+2. `npm install`
+3. `npm run build`
+
+That reproduces `build/index.js`, `build/index.css`, `build/index-rtl.css` and
+`build/index.asset.php` byte for byte from `src/`. The toolchain is
+`@wordpress/scripts`; `package.json` and `package-lock.json` are included so the
+exact dependency versions are pinned.
+
+The front end script `js/cryptx.min.js` is produced from `js/cryptx.js` with
+`terser@5.50.0 -c -m`.
+
 == Frequently Asked Questions ==
 
 = How does CryptX protect my email addresses? =
@@ -60,6 +78,12 @@ CryptX is designed to be lightweight and only loads JavaScript when needed. The 
 
 Not directly; currently, specific email addresses cannot be excluded. It is possible to add individual posts/pages to the exclusion list using their ID. These pages/posts will then not be processed by CryptX.
 
+= Does it work on a multisite network? =
+
+Yes, including network activation. Every site keeps its own settings and its own encryption secret, so nothing one site publishes can be read with another site's key. Sites created later are set up the same way as those that existed at activation time, and uninstalling removes the plugin's data from every site in the network.
+
+The settings live per site, because that is where the addresses and the design live. A site administrator configures their own site as usual; there is no network-wide settings screen.
+
 = Does it work with contact forms? =
 
 CryptX primarily works with email addresses displayed in content. It doesn't interfere with contact forms or other form functionality.
@@ -71,6 +95,28 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.1.1 =
+* **Fixed** a mailto link carrying a subject lost it, and the address inside the encrypted link was corrupted -- "sales@example.com?subject=Hello" became "sales@example.comsubjectHello" and the link went nowhere. Subject, body, cc and bcc now travel inside the encrypted link (thx to <a href="https://wordpress.org/support/users/pbmedia/">pbmedia</a>)
+* **New** the shortcode understands subject, body, cc and bcc: `[cryptx subject="Price enquiry" cc="sales@example.com"]info@example.com[/cryptx]`. The attribute "subject" was accepted and silently discarded before
+* **Fixed** cryptx_encrypt() turned markup in the passed content into visible text -- a `<br>` came out as `&lt;br&gt;`. It now keeps what a post may contain and still drops scripts (thx to <a href="https://wordpress.org/support/users/fint/">Fint Studio</a>)
+* **Fixed** an address directly following a tag, as in `Contact:<br>info@example.com`, was not linked, while the display text was replaced anyway -- the address disappeared from the page without a working link taking its place
+* the setting for the old "javascript:" link format now warns that page builders which run content through wp_kses_post, Elementor's text widget among them, strip the protocol and break every link
+* **Fixed** on block themes the shortcode did nothing at all: CryptX runs on render_block, which fires before do_shortcode, so it saw the raw "[cryptx]" text. The address went unlinked but was replaced anyway, and the inserted "[at]"/"[dot]" tore the shortcode apart. Unexpanded shortcodes are now left alone until they are expanded
+* **Fixed** a link written "MAILTO:" in capitals kept its href and ended up dead
+* the shortcode is left alone only where WordPress expands it afterwards; in comments, excerpts and custom fields it stays visible as text, but the address inside it is obfuscated as before
+* **Fixed** a shortcode inside a registered block pattern was left unprotected: core/pattern renders with do_blocks() alone, so nothing came along afterwards to expand it
+* **Fixed** with "Leave RSS feeds unprotected" switched off, the feed still carried the address in its `<description>`. A feed is built from its own filters -- the_excerpt_rss and the_content_feed -- and CryptX was on neither
+* **Fixed** a very long subject or body produced a link the browser refused to follow: the limit counted characters before encoding, while the browser counts the encoded address. 400 characters of Japanese became more than 3600
+* when a mailto link has to be shortened to stay inside the length a browser will follow, whole cc and bcc addresses are dropped rather than cut -- a fragment like "chef@examp" in a header is worse than a missing recipient
+* with "Leave RSS feeds unprotected" on, CryptX now leaves feeds alone entirely; the autolink step still rewrote bare addresses there
+* **Fixed** every update reset settings it had no business touching: the chosen font fell back to the first available one, the text colour gained another "#" each time -- "#3366ff" became "##3366ff" -- and the encryption secret was discarded, so links on already cached pages stopped resolving. These were one-time migrations from 4.0.12 that ran on every version bump; each is now tied to the version it belongs to
+* **Security** on a multisite network, activating the plugin network-wide copied the first site's settings to every other site. The exclusion list came with them, so a post ID excluded on the first site left the post with that ID unprotected on all the others -- addresses in plain text on sites whose administrator had excluded nothing. The encryption secret was copied as well; that matters less, because it is published in every generated link anyway, but it did let one site's key open a stray ciphertext from another. Each site now keeps its own settings
+* **New** full multisite support: network activation sets every site up individually, sites created later are handled the same way, deactivation clears the transients of all of them, and errors that only a network administrator can act on are now shown in the network backend
+* **Fixed** the front end script declared CONFIG, ITERATIONS, SecureUtils and other very general names in the global scope. A second script using any of them did not overwrite CryptX, it stopped one of the two scripts outright. Everything now lives in a closure; the documented entry points stay where they were and a `window.CryptX` namespace was added
+* the link in the plugin list is built from the settings page slug instead of the directory name, so renaming the folder no longer breaks it
+* version warnings on activation are shown only to users who can act on them
+* removed a registration on "wp_update_post", a hook WordPress does not have; updates were always covered by "wp_insert_post"
+
 = 4.1.0 =
 * **New** the settings screen has been rebuilt from scratch: mobile first, with every option explained where you set it
 * **New** a live preview shows what visitors see and what a spam bot finds in the source, updated as you change settings -- including a warning when a setting leaves an address readable
@@ -282,6 +328,10 @@ For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/
 * Add Option to disable CryptX on single post/page
 
 == Upgrade Notice ==
+
+= 4.1.1 =
+Bug fixes. Nothing to do on a single site. On a multisite network activated network-wide before 4.1.1, each site got the first site's settings: check every site under Settings > CryptX > Exceptions and remove post IDs it never excluded -- those posts show addresses unprotected. See the changelog.
+
 
 = 4.1.0 =
 The settings screen is completely new. Your settings are carried over unchanged; nothing needs to be reconfigured.

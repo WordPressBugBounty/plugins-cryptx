@@ -1,6 +1,6 @@
 {
   "name": "cryptx",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "Build setup for the CryptX settings screen. React and the component library come from WordPress itself, so only this plugin's own code is bundled.",
   "private": true,
   "license": "GPL-2.0-or-later",

@@ -15,7 +15,15 @@ namespace CryptX\Admin;
  */
 final class SettingsPage
 {
-    private const MENU_SLUG = 'cryptx';
+    /**
+     * The slug the settings page is registered under.
+     *
+     * Public because the link in the plugin list has to point at the same
+     * place. That link used to be built from CRYPTX_BASEFOLDER, the directory
+     * name -- identical on wordpress.org, and wrong the moment someone renames
+     * the folder.
+     */
+    public const MENU_SLUG = 'cryptx';
     private const SCRIPT_HANDLE = 'cryptx-settings';
 
     private RestController $rest;

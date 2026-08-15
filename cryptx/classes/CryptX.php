@@ -5,7 +5,65 @@ namespace CryptX;
 final class CryptX
 {
     const NOT_FOUND = false;
+
+    /**
+     * Kept for compatibility: it is public, so a theme may reference it.
+     *
+     * @deprecated 4.1.1 The guard that used it compared against an already
+     *             sanitised address and could therefore never match --
+     *             sanitize_email('?subject=x') returns an empty string. Query
+     *             handling now lives in sanitizeMailtoQuery().
+     */
     const SUBJECT_IDENTIFIER = "?subject=";
+
+    /** Upper bound for a single mailto header value, in characters. */
+    private const MAX_MAILTO_VALUE_LENGTH = 512;
+
+    /**
+     * Upper bound for the whole "mailto:..." target, in characters.
+     *
+     * Matches CONFIG.MAX_URL_LENGTH in js/cryptx.js and the limit in
+     * SecureEncryption::validateUrl(). Above it the click handler refuses to
+     * navigate, and the link silently does nothing.
+     */
+    private const MAX_MAILTO_URL_LENGTH = 2048;
+
+    /**
+     * Shortcode attributes that describe the mail, not the plugin's settings.
+     *
+     * The names are those of the mailto headers in RFC 6068, so
+     * [cryptx subject="..."] and href="mailto:...?subject=..." mean the same
+     * thing and are cleaned by the same code.
+     */
+    private const MAILTO_ATTRIBUTES = ['subject', 'body', 'cc', 'bcc'];
+
+    /**
+     * Filters after which WordPress expands shortcodes.
+     *
+     * Measured, not assumed: has_filter($name, 'do_shortcode') is 11 for these
+     * four and false for the other five CryptX hangs on. Only here may an
+     * unexpanded [cryptx] be set aside, because only here does something come
+     * along afterwards to deal with it.
+     */
+    /**
+     * The feed counterpart of each content filter.
+     *
+     * WordPress builds a feed from its own filters, not from the ones that
+     * render a page: <description> comes from 'the_excerpt_rss',
+     * <content:encoded> from 'the_content_feed'.
+     */
+    private const FEED_FILTERS = [
+        'the_content' => 'the_content_feed',
+        'the_excerpt' => 'the_excerpt_rss',
+        'comment_text' => 'comment_text_rss',
+    ];
+
+    private const SHORTCODE_EXPANDED_AFTER = [
+        'the_content',
+        'render_block',
+        'widget_text_content',
+        'widget_block_content',
+    ];
     const ASCII_VALUES_BLACKLIST = ['32', '34', '39', '60', '62', '63', '92', '94', '96', '127'];
     /** Upper bound for the text rendered into a PNG, see cryptXtinyUrl(). */
     private const MAX_IMAGE_TEXT_LENGTH = 254;
@@ -95,6 +153,50 @@ final class CryptX
     }
 
     /**
+     * Rebuilds the cached options and configuration for the site now in scope.
+     *
+     * Hooked to 'switch_blog', which WordPress fires for both switch_to_blog()
+     * and restore_current_blog(), so the object follows the site rather than
+     * the request.
+     *
+     * @return void
+     */
+    public function refreshForCurrentSite(): void
+    {
+        // wp_insert_site() switches into the new site BEFORE its tables exist,
+        // and reading options there produces a database error in the log while
+        // telling us nothing. wp_is_site_initialized() answers the question
+        // without that -- it suppresses errors around its own query.
+        //
+        // The flag is not needed for the call below as the core stands today:
+        // wp_is_site_initialized() only switches when the id differs from the
+        // current one (wp-includes/ms-site.php), and we pass our own. It is
+        // here for the two ways that changes -- a plugin filtering
+        // 'pre_wp_is_site_initialized', or a later core version that switches
+        // unconditionally -- either of which would call this method back into
+        // itself.
+        static $busy = false;
+
+        if ($busy) {
+            return;
+        }
+
+        $busy = true;
+
+        try {
+            if (is_multisite() && !wp_is_site_initialized(get_current_blog_id())) {
+                return;
+            }
+
+            $this->config = new Config(get_option('cryptX', []));
+            self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
+            self::resetOptionCaches();
+        } finally {
+            $busy = false;
+        }
+    }
+
+    /**
      * Checks the current version of the application against the stored version and updates settings if the application version is newer.
      *
      * @return void
@@ -143,6 +245,55 @@ final class CryptX
                 $this->addOtherFilters($filter);
             }
         }
+
+        $this->addFeedFilters();
+    }
+
+    /**
+     * Registers the feed counterparts of the active content filters.
+     *
+     * Without these, "Leave RSS feeds unprotected = off" only half worked. A
+     * feed's <description> comes from the_excerpt_rss(), and nothing CryptX
+     * hangs on runs on the way there: on a block theme the plugin sits on
+     * 'render_block', which fires only from do_blocks() -- and
+     * wp_trim_excerpt() detaches do_blocks before building the excerpt. The
+     * address went out in the feed while the setting said it would not.
+     *
+     * The guard inside the three stages stays as it is; it is what makes the
+     * option work in the other direction, for filters that run in both feed
+     * and page context.
+     *
+     * @return void
+     */
+    private function addFeedFilters(): void
+    {
+        // The default: feeds are deliberately left alone, because a feed
+        // reader runs no JavaScript and a protected link would be dead in it.
+        //
+        // Read from the store rather than from the static list. The two agree
+        // when this runs during startup, but the static one is swapped for the
+        // duration of a shortcode and of the settings preview -- and a method
+        // that decides which hooks exist has no business depending on which of
+        // those happened to be in flight.
+        $options = $this->loadCryptXOptionsWithDefaults();
+
+        if (!empty($options['disable_rss'])) {
+            return;
+        }
+
+        foreach ($this->config->getActiveFilters() as $filter) {
+            if (!isset(self::FEED_FILTERS[$filter])) {
+                continue;
+            }
+
+            $feedFilter = self::FEED_FILTERS[$filter];
+
+            if ($this->config->isAutolinkEnabled()) {
+                $this->addAutoLinkFilters($feedFilter, 11);
+            }
+
+            $this->addOtherFilters($feedFilter);
+        }
     }
 
     /**
@@ -153,6 +304,15 @@ final class CryptX
     private function registerCoreHooks(): void
     {
         add_action('activate_' . CRYPTX_BASENAME, [$this, 'installCryptX']);
+
+        // Multisite: this object is built once per request, from whichever site
+        // was current at the time. switch_to_blog() changes what get_option()
+        // returns but not what this instance already holds -- and
+        // getCryptXOptionsDefaults() hands out $this->config, which is the
+        // FIRST site's stored values, not a set of defaults. Everything read
+        // after a switch therefore came from the wrong site, up to and
+        // including its encryption secret.
+        add_action('switch_blog', [$this, 'refreshForCurrentSite']);
         add_action('wp_enqueue_scripts', [$this, 'loadJavascriptFiles']);
         // Priority 1 so this still runs before wp_print_footer_scripts.
         add_action('wp_footer', [$this, 'enqueueAssetsIfNeeded'], 1);
@@ -173,8 +333,14 @@ final class CryptX
         }
 
         add_action('admin_menu', [$this, 'metaBox']);
+
+        // Only 'wp_insert_post'. There was a second registration on
+        // 'wp_update_post' -- a hook WordPress does not have: the core defines
+        // a *function* of that name, and the only do_action() calls are
+        // 'wp_insert_post' in wp-includes/post.php. Since wp_update_post()
+        // routes through wp_insert_post(), an update was covered all along;
+        // the line did nothing and suggested it did.
         add_action('wp_insert_post', [$this, 'addPostIdToExcludedList']);
-        add_action('wp_update_post', [$this, 'addPostIdToExcludedList']);
     }
 
     /**
@@ -185,7 +351,9 @@ final class CryptX
     private function registerAdditionalHooks(): void
     {
         add_filter('plugin_row_meta', [$this, 'add_plugin_action_links'], 10, 2);
-        add_filter('init', [$this, 'cryptXtinyUrl']);
+        // add_action, nicht add_filter: 'init' ist eine Action. Intern
+        // dasselbe, aber der Aufruf soll sagen, was er tut.
+        add_action('init', [$this, 'cryptXtinyUrl']);
         add_shortcode('cryptx', [$this, 'cryptXShortcode']);
     }
 
@@ -251,6 +419,166 @@ final class CryptX
      * @param array $attributes The array of attributes, potentially encoded.
      * @return array The array of decoded attributes with the 'encoded' key removed if present.
      */
+    /**
+     * Runs a processing step with unexpanded [cryptx] shortcodes masked out.
+     *
+     * On a block theme the three filters hang on 'render_block', which fires
+     * from do_blocks() at 'the_content' priority 9 -- while do_shortcode()
+     * runs at priority 11. CryptX therefore sees the shortcode as raw text,
+     * long before it becomes anything.
+     *
+     * Left alone, that ends badly in two ways. The address inside
+     * "[cryptx]info@example.com[/cryptx]" is not linked, because it sits
+     * behind a "]", yet the display stage replaces it anyway -- the same
+     * silent failure the autolink patterns were widened for. And once the
+     * replacement inserts "[at]" and "[dot]", the new square brackets tear the
+     * shortcode apart, so the parser later prints the wreckage into the page.
+     *
+     * Masking hands the shortcode to do_shortcode() untouched. It does its own
+     * encrypting, with its own attributes, exactly as on a classic theme.
+     *
+     * @param string $content The content.
+     * @param callable $process Receives the masked content, returns the result.
+     *
+     * @return string The processed content, with the shortcodes back in place.
+     */
+    private function withShortcodesProtected(string $content, callable $process): string
+    {
+        // Masking is only safe where do_shortcode() runs after us. In
+        // 'comment_text', 'the_excerpt', 'the_meta_key', 'widget_text' and
+        // 'widget_custom_html_content' it does not -- WordPress never expands
+        // shortcodes there. Masking unconditionally therefore handed the
+        // address to nobody at all: it was skipped here and never picked up
+        // later, and a "[cryptx]" written into a comment shipped the address in
+        // the clear. 4.1.0 at least obfuscated it.
+        //
+        // Where the shortcode is not going to be expanded, the literal
+        // "[cryptx]" stays visible in the output and the address inside it is
+        // obfuscated like any other. Ugly, and the same as before -- but the
+        // address is covered.
+        if (stripos($content, '[cryptx') === false
+            || !in_array(current_filter(), self::SHORTCODE_EXPANDED_AFTER, true)) {
+            return $process($content);
+        }
+
+        $store = [];
+
+        // WordPress' own idea of what a shortcode looks like, rather than a
+        // hand-rolled one: it knows the self-closing form, the enclosing form
+        // and -- the reason this matters below -- the escaped form.
+        $pattern = '/' . get_shortcode_regex(['cryptx']) . '/s';
+
+        $masked = preg_replace_callback(
+            $pattern,
+            static function (array $match) use (&$store): string {
+                // "[[cryptx]...[/cryptx]]" is how a page shows a shortcode
+                // instead of running it -- an instructions page explaining
+                // CryptX, typically. do_shortcode() deliberately leaves it as
+                // text, so masking it would carry the address straight through
+                // to the visitor in the clear. Groups 1 and 6 are the extra
+                // brackets; when both are there, this is not ours to protect
+                // and has to go through the normal obfuscation.
+                if (($match[1] ?? '') === '[' && ($match[6] ?? '') === ']') {
+                    return $match[0];
+                }
+
+                $store[] = $match[0];
+
+                return sprintf('<!--cryptx:%d-->', count($store) - 1);
+            },
+            $content
+        );
+
+        // A PCRE failure must not cost the content; process it unmasked.
+        if ($masked === null) {
+            return $process($content);
+        }
+
+        $result = $process($masked);
+
+        // Under 'render_block' the shortcode is expanded here rather than left
+        // for later. The other three entries in SHORTCODE_EXPANDED_AFTER carry
+        // do_shortcode() themselves; 'render_block' does not -- it relies on
+        // the_content running afterwards, and there are core paths where that
+        // never happens. A block pattern pulled in through core/pattern is
+        // rendered by do_blocks() alone (wp-includes/blocks/pattern.php), so a
+        // masked shortcode would have been handed to nobody and the address
+        // would have reached the page in the clear.
+        //
+        // Expanding twice is harmless: whatever runs later finds an anchor, no
+        // shortcode.
+        if (current_filter() === 'render_block') {
+            $store = array_map('do_shortcode', $store);
+        }
+
+        $tokens = array_map(
+            static fn(int $index): string => sprintf('<!--cryptx:%d-->', $index),
+            array_keys($store)
+        );
+
+        return str_replace($tokens, $store, $result);
+    }
+
+    /**
+     * Builds a mailto query from the shortcode's mail attributes.
+     *
+     * @param array<string, mixed> $attributes Lower-cased shortcode attributes.
+     *
+     * @return string The cleaned query, or an empty string.
+     */
+    private function buildMailtoQueryFromAttributes(array $attributes): string
+    {
+        $pairs = [];
+
+        foreach (self::MAILTO_ATTRIBUTES as $name) {
+            if (!isset($attributes[$name]) || is_array($attributes[$name])) {
+                continue;
+            }
+
+            $value = (string) $attributes[$name];
+
+            if (trim($value) === '') {
+                continue;
+            }
+
+            $pairs[] = $name . '=' . rawurlencode($value);
+        }
+
+        // Straight through the same gate an address in the page goes through,
+        // so the shortcode cannot express anything a link could not.
+        return $this->sanitizeMailtoQuery(implode('&', $pairs));
+    }
+
+    /**
+     * Appends a query to every mailto link that does not already carry one.
+     *
+     * A link written by hand with its own "?subject=" keeps it: the more
+     * specific instruction wins over the shortcode's blanket one.
+     *
+     * @param string $content The content, after autolinking.
+     * @param string $query The query to append, without the "?".
+     *
+     * @return string The content with the query in place.
+     */
+    private function addQueryToMailtoLinks(string $content, string $query): string
+    {
+        $result = preg_replace_callback(
+            '/(href\s*=\s*(["\']))mailto:([^"\']+)(\2)/i',
+            static function (array $match) use ($query): string {
+                if (strpos($match[3], '?') !== false) {
+                    return $match[0];
+                }
+
+                return $match[1] . 'mailto:' . $match[3] . '?' . $query . $match[4];
+            },
+            $content
+        );
+
+        // Same reasoning as every other preg_* call site here: a PCRE failure
+        // yields null, and handing that on would empty the content.
+        return $result ?? $content;
+    }
+
     private function decodeAttributes(array $attributes): array
     {
         if (($attributes['encoded'] ?? '') !== 'true') {
@@ -278,12 +606,22 @@ final class CryptX
     {
         // Decode attributes if needed
         $attributes = $this->decodeAttributes($atts);
+        $attributes = array_change_key_case($attributes, CASE_LOWER);
+
+        // The mail headers are pulled out first. They are not options -- there
+        // is no "subject" in the option store and never was -- so leaving them
+        // in would hand them to shortcode_atts(), which drops anything it does
+        // not recognise. That is precisely what happened to "subject" for
+        // years: accepted by the parser, silently discarded, and documented as
+        // working.
+        $mailQuery = $this->buildMailtoQueryFromAttributes($attributes);
+        $attributes = array_diff_key($attributes, array_flip(self::MAILTO_ATTRIBUTES));
 
         // Update options if attributes provided
         if (!empty($attributes)) {
             self::$cryptXOptions = shortcode_atts(
                     $this->loadCryptXOptionsWithDefaults(),
-                    array_change_key_case($attributes, CASE_LOWER),
+                    $attributes,
                     $tag
             );
             self::resetOptionCaches();
@@ -294,6 +632,14 @@ final class CryptX
             if (self::$cryptXOptions['autolink'] ?? false) {
                 $content = $this->addLinkToEmailAddresses($content, true);
             }
+
+            // After autolinking, so a bare address in the shortcode body has a
+            // link to carry the headers, and before encrypting, so they end up
+            // inside the payload rather than in the page.
+            if ($mailQuery !== '') {
+                $content = $this->addQueryToMailtoLinks($content, $mailQuery);
+            }
+
             $content = $this->findEmailAddressesInContent($content, true);
             $processedContent = $this->replaceEmailInContent($content, true);
         } finally {
@@ -552,7 +898,10 @@ final class CryptX
 
         // For widgets, always process; for other content, check exclusion rules
         if (($isWidgetContext || !$this->isIdExcluded($postId) || $isShortcode) && !empty($content)) {
-            $content = $this->replaceEmailWithLinkText($content);
+            $content = $this->withShortcodesProtected(
+                $content,
+                fn(string $masked): string => $this->replaceEmailWithLinkText($masked)
+            );
         }
 
         return $content;
@@ -648,9 +997,16 @@ final class CryptX
      */
     private function getLinkText(): string
     {
-        // Escaped here rather than at the source: the settings page runs this
-        // value through sanitize_text_field(), but a shortcode attribute of the
-        // same name reaches self::$cryptXOptions without passing that filter.
+        // Escaped here rather than at the source: a shortcode attribute of the
+        // same name reaches self::$cryptXOptions without passing through the
+        // settings validation at all.
+        //
+        // esc_html and not wp_kses_post, although the settings screen stores
+        // the value with wp_kses_post: the link text sits inside an anchor that
+        // CryptX builds itself, and markup there could close that anchor early.
+        // The two stages therefore mean different things on purpose -- storage
+        // keeps what a post may contain, output shows it as text. See
+        // SettingsSchema::sanitizeValue().
         return esc_html((string) self::$cryptXOptions['alt_linktext']);
     }
 
@@ -812,15 +1168,19 @@ final class CryptX
         // and produce mangled markup. Same construction as in
         // rewriteOpeningAnchorTag(); the two have to agree on what a tag is.
         $mailtoRegex = '/<a\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*?href\s*=\s*(["\'])mailto:([^"\']+)\1(?:[^>"\']|"[^"]*"|\'[^\']*\')*>(.*?)<\/a>/is';
+        $that = $this;
 
         // For widgets, always process since there's no specific post context
         // For other content, check exclusion rules
         if ($isWidgetContext || !$isIdExcluded || $shortcode) {
-            $result = preg_replace_callback($mailtoRegex, [$this, 'encryptEmailAddressSecure'], $content);
+            $content = $this->withShortcodesProtected($content, static function (string $masked) use ($mailtoRegex, $that): string {
+                $result = preg_replace_callback($mailtoRegex, [$that, 'encryptEmailAddressSecure'], $masked);
 
-            // null means PCRE gave up (backtrack limit). Keeping the original
-            // content is far better than returning null and wiping the page.
-            $content = $result ?? $content;
+                // null means PCRE gave up (backtrack limit). Keeping the
+                // original content is far better than returning null and
+                // wiping the page.
+                return $result ?? $masked;
+            });
         }
 
         return $content;
@@ -868,6 +1228,23 @@ final class CryptX
     {
         global $post;
 
+        // The same gate the other two stages carry, and missing here until
+        // 4.1.1. "Leave RSS feeds unprotected" is meant as "do not touch
+        // feeds"; without this, the autolink stage still turned a bare address
+        // into a mailto link in the feed, while the two stages that protect it
+        // stepped aside. The result was not a leak -- with the option on, the
+        // address is in the feed either way -- but it was CryptX changing
+        // content it had just been told to leave alone.
+        //
+        // The $shortcode exception is made here and not in the other two
+        // stages: those bail out of a feed unconditionally. Keeping it means
+        // the shortcode path behaves exactly as it did before this guard
+        // existed, which is the point -- the shortcode is an explicit
+        // instruction and outranks a blanket setting.
+        if (!$shortcode && self::$cryptXOptions['disable_rss'] && $this->isRssFeed()) {
+            return $content;
+        }
+
         // Eight regular expressions follow, each carrying the full address
         // pattern. Without an at sign not one of them can match, so this test
         // saves the entire pass.
@@ -888,12 +1265,27 @@ final class CryptX
 
         $emailPattern = "[_a-zA-Z0-9-+]+(\\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*(\\.[a-zA-Z]{2,})";
         $linkPattern = "<a href=\"mailto:\\2\">\\2</a>";
+        // Two widenings, both from the same report. The patterns after ">"
+        // required a "<" or whitespace to follow, so an address that ended the
+        // string right after a tag -- "Kontakt:<br>info@example.com" -- was
+        // never linked; hence the "$" variant. And they accepted only ">",
+        // while wp_kses_post() turns a bare ">" into "&gt;", leaving a ";"
+        // in front of the address; hence "[>;]", which covers the end of any
+        // HTML entity.
+        //
+        // In post content neither showed much, because a closing tag almost
+        // always follows an address. Through cryptx_encrypt() both showed every
+        // time. Worse than the missing link was what came next: the display
+        // stage still swapped the address for the configured link text, so the
+        // address vanished from the page without anything working taking its
+        // place.
         $src = [
                 "/([\\s])($emailPattern)/si",
-                "/(>)($emailPattern)(<)/si",
+                "/([>;])($emailPattern)(<)/si",
                 "/(\\()($emailPattern)(\\))/si",
-                "/(>)($emailPattern)([\\s])/si",
+                "/([>;])($emailPattern)([\\s])/si",
                 "/([\\s])($emailPattern)(<)/si",
+                "/([>;])($emailPattern)$/si",
                 "/^($emailPattern)/si",
                 "/(<a[^>]*>)<a[^>]*>/",
                 "/(<\\/A>)<\\/A>/i"
@@ -904,16 +1296,19 @@ final class CryptX
                 "\\1$linkPattern\\6",
                 "\\1$linkPattern\\6",
                 "\\1$linkPattern\\6",
+                "\\1$linkPattern",
                 "<a href=\"mailto:\\0\">\\0</a>",
                 "\\1",
                 "\\1"
         ];
 
-        $result = preg_replace($src, $tar, $content);
+        return $this->withShortcodesProtected($content, static function (string $masked) use ($src, $tar): string {
+            $result = preg_replace($src, $tar, $masked);
 
-        // Same reasoning as elsewhere: a PCRE failure yields null, and handing
-        // that on would silently empty the page.
-        return $result ?? $content;
+            // Same reasoning as elsewhere: a PCRE failure yields null, and
+            // handing that on would silently empty the page.
+            return $result ?? $masked;
+        });
     }
 
     /**
@@ -922,6 +1317,18 @@ final class CryptX
     public function installCryptX(): void
     {
         global $wpdb;
+
+        // Load-bearing, not a duplicate of the 'switch_blog' hook -- do not
+        // remove it as one. When a plugin is activated, WordPress includes its
+        // file from activate_plugin(), long after plugins_loaded has fired, so
+        // startCryptX() never runs in that request and the hook is not
+        // registered. Measured: activating an inactive plugin, has_action(
+        // 'switch_blog') is false throughout. Without this line the network
+        // activation loop writes site 1's values into every other site --
+        // secret, link text and exclusion list -- which is how the bug was
+        // found in the first place.
+        $this->refreshForCurrentSite();
+
         self::$cryptXOptions['admin_notices_deprecated'] = true;
         if (self::$cryptXOptions['excludedIDs'] == "") {
             $tmp = array();
@@ -1149,25 +1556,6 @@ final class CryptX
     }
 
     /**
-     * Displays a message in a styled div.
-     *
-     * @param string $message The message to be displayed.
-     * @param bool $errormsg Optional. Indicates whether the message is an error message. Default is false.
-     *
-     * @return void
-     */
-    private function showMessage(string $message, bool $errormsg = false): void
-    {
-        if ($errormsg) {
-            echo '<div id="message" class="error">';
-        } else {
-            echo '<div id="message" class="updated fade">';
-        }
-
-        echo esc_html($message) . "</div>";
-    }
-
-    /**
      * Retrieves the domain from the current site URL.
      *
      * @return string The domain of the current site URL.
@@ -1272,38 +1660,63 @@ final class CryptX
     private function updateCryptXSettings(): void
     {
         self::$cryptXOptions = get_option('cryptX');
-        if (isset(self::$cryptXOptions['version']) && version_compare(CRYPTX_VERSION, self::$cryptXOptions['version']) > 0) {
-            if (isset(self::$cryptXOptions['version'])) {
-                unset(self::$cryptXOptions['version']);
-            }
-            if (isset(self::$cryptXOptions['c2i_font'])) {
-                unset(self::$cryptXOptions['c2i_font']);
-            }
-            // Installations from before 4.0.12 hold a password derived from
-            // AUTH_KEY and SECURE_AUTH_KEY, and that value is published in the
-            // markup of every page. Since site_url is public, an attacker can
-            // test candidate keys offline -- above all the placeholders from
-            // wp-config-sample.php that unattended installations still carry.
-            // Dropping it here lets Config::getEncryptionPassword() mint a
-            // random one. The price: links on pages already sitting in a cache
-            // stop resolving until that cache turns over, which is why this
-            // happens once, at the version bump, and is called out in the
-            // upgrade notice.
-            if (isset(self::$cryptXOptions['encryption_password'])) {
-                unset(self::$cryptXOptions['encryption_password']);
-            }
-            if (isset(self::$cryptXOptions['c2i_fontRGB'])) {
-                self::$cryptXOptions['c2i_fontRGB'] = "#" . self::$cryptXOptions['c2i_fontRGB'];
-            }
-            if (isset(self::$cryptXOptions['alt_uploadedimage']) && !is_int(self::$cryptXOptions['alt_uploadedimage'])) {
-                unset(self::$cryptXOptions['alt_uploadedimage']);
-                if (self::$cryptXOptions['opt_linktext'] == 3) {
-                    unset(self::$cryptXOptions['opt_linktext']);
-                }
-            }
-            self::$cryptXOptions = wp_parse_args(self::$cryptXOptions, $this->getCryptXOptionsDefaults());
-            update_option('cryptX', self::$cryptXOptions);
+
+        $storedVersion = self::$cryptXOptions['version'] ?? null;
+
+        if ($storedVersion === null || version_compare(CRYPTX_VERSION, $storedVersion) <= 0) {
+            return;
         }
+
+        // Every step below used to run on EVERY version bump, although each was
+        // written for one particular upgrade. Measured on an installation
+        // carrying 4.1.0: the chosen font fell back to the first available one,
+        // the colour "#3366ff" became "##3366ff" -- gaining another "#" with
+        // every future update -- and the encryption secret was thrown away, so
+        // every link on an already cached page stopped resolving. None of that
+        // was intended, and none of it was visible to the site owner.
+        //
+        // Each migration is now tied to the version it belongs to, or written
+        // so that repeating it changes nothing.
+
+        // Up to 4.0.11 the password was derived from AUTH_KEY and
+        // SECURE_AUTH_KEY, and that value is published in the markup of every
+        // page. Since site_url is public, an attacker could test candidate keys
+        // offline -- above all the placeholders from wp-config-sample.php that
+        // unattended installations still carry. Dropping it lets
+        // Config::getEncryptionPassword() mint a random one. The price is that
+        // links on pages already sitting in a cache stop resolving until that
+        // cache turns over, which is why it must happen exactly once.
+        if (version_compare($storedVersion, '4.0.12', '<')) {
+            unset(self::$cryptXOptions['encryption_password']);
+
+            // 4.0.12 replaced the bundled Arial, Times New Roman and Verdana
+            // with freely licensed faces. A stored name from the old set no
+            // longer exists on disk, so the choice has to be made again.
+            unset(self::$cryptXOptions['c2i_font']);
+        }
+
+        // Value-based rather than version-based, and therefore harmless to
+        // repeat: colours were stored without the leading "#" before 4.0.
+        if (!empty(self::$cryptXOptions['c2i_fontRGB'])
+            && strpos((string) self::$cryptXOptions['c2i_fontRGB'], '#') !== 0) {
+            self::$cryptXOptions['c2i_fontRGB'] = '#' . self::$cryptXOptions['c2i_fontRGB'];
+        }
+
+        // Also value-based: an attachment id that is not an id is unusable, no
+        // matter which version wrote it.
+        if (isset(self::$cryptXOptions['alt_uploadedimage'])
+            && !is_int(self::$cryptXOptions['alt_uploadedimage'])
+            && !ctype_digit((string) self::$cryptXOptions['alt_uploadedimage'])) {
+            unset(self::$cryptXOptions['alt_uploadedimage']);
+
+            if ((int) (self::$cryptXOptions['opt_linktext'] ?? 0) === 3) {
+                unset(self::$cryptXOptions['opt_linktext']);
+            }
+        }
+
+        self::$cryptXOptions['version'] = CRYPTX_VERSION;
+        self::$cryptXOptions = wp_parse_args(self::$cryptXOptions, $this->getCryptXOptionsDefaults());
+        update_option('cryptX', self::$cryptXOptions);
     }
 
     /**
@@ -1393,9 +1806,13 @@ final class CryptX
      */
     private function create_settings_link(): string
     {
+        // Admin\SettingsPage::MENU_SLUG und nicht CRYPTX_BASEFOLDER: die
+        // Seite haengt am Slug, nicht am Verzeichnisnamen. Auf wordpress.org
+        // sind beide 'cryptx', nach einem Umbenennen des Ordners zeigte der
+        // Link ins Leere.
         return sprintf(
-                '<a href="options-general.php?page=%s">%s</a>',
-                CRYPTX_BASEFOLDER,
+                '<a href="%s">%s</a>',
+                esc_url(admin_url('options-general.php?page=' . Admin\SettingsPage::MENU_SLUG)),
                 esc_html__('Settings', 'cryptx')
         );
     }
@@ -1409,7 +1826,7 @@ final class CryptX
     {
         return sprintf(
                 '<a href="%s">%s</a>',
-                self::PAYPAL_DONATION_URL,
+                esc_url(self::PAYPAL_DONATION_URL),
                 esc_html__('Donate', 'cryptx')
         );
     }
@@ -1469,18 +1886,183 @@ final class CryptX
      * @param array $searchResults
      * @return string
      */
+    /**
+     * Cleans the query of a mailto link -- the "?subject=..." part.
+     *
+     * A positive list, not an exclusion list, because this value ends up
+     * decrypted in the browser and handed to window.location. RFC 6068 defines
+     * exactly these four headers as safe to accept from a link; everything else
+     * is dropped rather than escaped, because there is no legitimate reason for
+     * it to be there and no way to be sure what a mail client would do with it.
+     *
+     * Values are decoded and re-encoded rather than passed through: an incoming
+     * "Hallo%20Welt" must not become "Hallo%2520Welt", and a raw space must not
+     * stay a raw space.
+     *
+     * @param string $rawQuery The query as written in the href, without the "?".
+     * @param int $budget How many characters the finished query may occupy.
+     *
+     * @return string The cleaned query, or an empty string if nothing survives.
+     */
+    private function sanitizeMailtoQuery(string $rawQuery, int $budget = PHP_INT_MAX): string
+    {
+        if ($rawQuery === '' || $budget <= 0) {
+            return '';
+        }
+
+        // "&amp;" is how a second parameter is spelled in valid HTML, and that
+        // is what the regular expression handed us.
+        $rawQuery = html_entity_decode($rawQuery, ENT_QUOTES, 'UTF-8');
+
+        $allowed = ['subject', 'body', 'cc', 'bcc'];
+        $parts = [];
+
+        foreach (explode('&', $rawQuery) as $pair) {
+            if ($pair === '' || strpos($pair, '=') === false) {
+                continue;
+            }
+
+            [$key, $value] = explode('=', $pair, 2);
+            $key = strtolower(trim($key));
+
+            if (!in_array($key, $allowed, true) || isset($parts[$key])) {
+                continue;
+            }
+
+            $value = rawurldecode($value);
+
+            // A recipient list is still a list of addresses, and an invalid one
+            // has no business being carried into a mail client.
+            if ($key === 'cc' || $key === 'bcc') {
+                $addresses = array_filter(array_map(
+                    static fn($address) => sanitize_email(trim($address)),
+                    explode(',', $value)
+                ));
+
+                if ($addresses === []) {
+                    continue;
+                }
+
+                $value = implode(',', $addresses);
+            } else {
+                // Control characters would let a payload break out of the
+                // header it is written into.
+                $value = preg_replace('/[\x00-\x1F\x7F]/u', '', $value) ?? '';
+
+                if (trim($value) === '') {
+                    continue;
+                }
+
+                $value = mb_substr($value, 0, self::MAX_MAILTO_VALUE_LENGTH);
+            }
+
+            $pair = $this->fitPairToBudget(
+                $key,
+                $value,
+                // What is left once the pairs already collected, and the "&"
+                // that would join this one, are accounted for.
+                $budget - strlen(implode('&', $parts)) - ($parts === [] ? 0 : 1),
+                ($key === 'cc' || $key === 'bcc') ? ',' : ''
+            );
+
+            if ($pair === '') {
+                continue;
+            }
+
+            $parts[$key] = $pair;
+        }
+
+        return implode('&', $parts);
+    }
+
+    /**
+     * Encodes one header and shortens it until it fits the space left.
+     *
+     * The value is cut before encoding, never after: percent encoding turns one
+     * character into up to twelve, and a cut through "%C3%A4" leaves a sequence
+     * no client can read.
+     *
+     * Why there is a budget at all: cryptx.js refuses to navigate to a URL
+     * longer than 2048 characters, and so does SecureEncryption::validateUrl().
+     * Counting the value in characters before encoding is not the same measure
+     * -- 512 characters of Japanese become over 4000 once encoded. The link
+     * then did nothing at all, with nothing on the page to say why.
+     *
+     * @param string $key The header name.
+     * @param string $value The decoded value.
+     * @param int $available Characters left for the encoded pair.
+     * @param string $separator Set for list values: whole entries are dropped
+     *                          instead of characters.
+     *
+     * @return string The encoded pair, or an empty string if it cannot fit.
+     */
+    private function fitPairToBudget(
+        string $key,
+        string $value,
+        int $available,
+        string $separator = ''
+    ): string {
+        $encodedKey = rawurlencode($key);
+
+        // The shortest useful pair is "key=" plus one character.
+        if ($available < strlen($encodedKey) + 2) {
+            return '';
+        }
+
+        $pair = $encodedKey . '=' . rawurlencode($value);
+
+        // A recipient list is not free text. Cutting it by characters leaves a
+        // fragment like "chef@examp" in a header a mail client will act on --
+        // either bouncing or, worse, delivering somewhere unintended. Whole
+        // addresses go, or the header goes.
+        if ($separator !== '') {
+            $items = explode($separator, $value);
+
+            while (strlen($pair) > $available && count($items) > 1) {
+                array_pop($items);
+                $pair = $encodedKey . '=' . rawurlencode(implode($separator, $items));
+            }
+
+            return strlen($pair) > $available ? '' : $pair;
+        }
+
+        while (strlen($pair) > $available && $value !== '') {
+            $value = mb_substr($value, 0, mb_strlen($value) - 1);
+            $pair = $encodedKey . '=' . rawurlencode($value);
+        }
+
+        return $value === '' ? '' : $pair;
+    }
+
     private function encryptEmailAddressSecure(array $searchResults): string
     {
         $originalValue = $searchResults[0];  // Full match
-        $emailAddress = sanitize_email($searchResults[2]);   // Email address
+        $rawTarget = $searchResults[2];      // Everything after "mailto:", verbatim
+
+        // Address and query are separated BEFORE sanitising. sanitize_email()
+        // used to run over the whole target, and it strips "?" and "=" -- so
+        // "sales@example.com?subject=Hello" became
+        // "sales@example.comsubjectHello". Two things followed from that, both
+        // reported in the support forum and neither obvious: the payload
+        // carried a broken address, and the str_replace() below could no longer
+        // find its needle, so the untouched "mailto:" href stayed in the page.
+        $queryPosition = strpos($rawTarget, '?');
+        $rawAddress = $queryPosition === false ? $rawTarget : substr($rawTarget, 0, $queryPosition);
+        $rawQuery = $queryPosition === false ? '' : substr($rawTarget, $queryPosition + 1);
+
+        $emailAddress = sanitize_email($rawAddress);
 
         if (strpos($emailAddress, '@') === self::NOT_FOUND) {
             return $originalValue;
         }
 
-        if (str_starts_with($emailAddress, self::SUBJECT_IDENTIFIER)) {
-            return $originalValue;
-        }
+        // The budget is what the browser will still accept once "mailto:",
+        // the address and the "?" are in place.
+        $query = $this->sanitizeMailtoQuery(
+            $rawQuery,
+            self::MAX_MAILTO_URL_LENGTH - strlen('mailto:' . $emailAddress . '?')
+        );
+        $mailtoTarget = $emailAddress . ($query === '' ? '' : '?' . $query);
 
         $return = $originalValue;
 
@@ -1498,17 +2080,19 @@ final class CryptX
                 // Use modern AES-256-GCM encryption
                 try {
                     $password = $this->config->getEncryptionPassword();
-                    $mailtoUrl = 'mailto:' . $emailAddress;
+                    $mailtoUrl = 'mailto:' . $mailtoTarget;
                     $encryptedEmail = SecureEncryption::encrypt($mailtoUrl, $password);
                     $payloadMode = 'secure';
                 } catch (\Exception $e) {
                     // Fallback to legacy if secure encryption fails
-                    $encryptedEmail = $this->generateHashFromString($emailAddress);
+                    $encryptedEmail = $this->generateHashFromString($mailtoTarget);
                     $password = '';
                 }
             } else {
-                // Use legacy encryption (original algorithm)
-                $encryptedEmail = $this->generateHashFromString($emailAddress);
+                // Use legacy encryption (original algorithm). cryptx.js puts
+                // "mailto:" in front of whatever comes out, so the query rides
+                // along here as well.
+                $encryptedEmail = $this->generateHashFromString($mailtoTarget);
             }
 
             self::$scriptNeeded = true;
@@ -1528,7 +2112,15 @@ final class CryptX
                     $attributes .= sprintf(' data-cxk="%s"', esc_attr($password));
                 }
 
-                $return = str_replace('mailto:' . $emailAddress, '#', $originalValue);
+                // The raw target, not the sanitised address: they differ as
+                // soon as a query is present, and a needle that is not in the
+                // haystack leaves the plain "mailto:" href untouched.
+                //
+                // str_ireplace, because the pattern above matches case
+                // insensitively: an href written "MAILTO:" was found, but a
+                // lower-case needle then missed it -- same failure, reached
+                // through the spelling of the scheme instead of the query.
+                $return = str_ireplace('mailto:' . $rawTarget, '#', $originalValue);
                 $return = $this->addAttributesToAnchor($return, $attributes);
                 $return = $this->addClassToAnchor($return, self::LINK_CLASS);
             } else {
@@ -1537,12 +2129,12 @@ final class CryptX
                         ? "javascript:secureDecryptAndNavigate('" . esc_js($encryptedEmail) . "', '" . esc_js($password) . "')"
                         : "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
 
-                $return = str_replace('mailto:' . $emailAddress, $javaHandler, $originalValue);
+                $return = str_ireplace('mailto:' . $rawTarget, $javaHandler, $originalValue);
             }
         } else {
             // Fallback to antispambot if JavaScript is not enabled
-            $return = str_replace('mailto:' . $emailAddress,
-                    antispambot('mailto:' . $emailAddress), $return);
+            $return = str_ireplace('mailto:' . $rawTarget,
+                    antispambot('mailto:' . $mailtoTarget), $return);
         }
 
         // Add CSS attributes if specified

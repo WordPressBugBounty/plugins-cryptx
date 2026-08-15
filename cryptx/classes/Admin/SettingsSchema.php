@@ -335,7 +335,7 @@ final class SettingsSchema
                 'tab' => self::TAB_ADVANCED,
                 'section' => __('Encryption', 'cryptx'),
                 'label' => __('Link format', 'cryptx'),
-                'help' => __('Data attributes work on sites with a Content-Security-Policy, where a javascript: link is blocked and every CryptX link would silently stop working. Only switch to the old format if something in your setup depends on it.', 'cryptx'),
+                'help' => __('Data attributes work on sites with a Content-Security-Policy, where a javascript: link is blocked and every CryptX link would silently stop working. The old format additionally breaks wherever content passes through WordPress\'s own wp_kses_post() -- the Elementor text widget and many page builders do this, and it strips "javascript:" out of the link while leaving the rest behind. Only switch to the old format if something in your setup depends on it.', 'cryptx'),
                 'choices' => [
                     ['value' => 'data', 'label' => __('Data attributes (recommended)', 'cryptx')],
                     ['value' => 'js', 'label' => __('javascript: link, as before 4.0.12', 'cryptx')],

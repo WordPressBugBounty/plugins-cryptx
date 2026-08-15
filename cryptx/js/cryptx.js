@@ -1,6 +1,18 @@
 /**
  * Secure CryptX Library - Fixed for backward compatibility
+ *
+ * Everything below lives inside an IIFE. Without it, the top-level `const` and
+ * `class` declarations -- CONFIG, ITERATIONS, KEY_LENGTH, SecureUtils,
+ * SecureEncryption -- sit in the global lexical environment of the page, and a
+ * second script declaring any of those names does not merely overwrite them:
+ * it throws "Identifier has already been declared" and one of the two scripts
+ * stops dead. With names this general that is a matter of time, and the failure
+ * would look like CryptX being broken for no reason.
+ *
+ * What the outside is meant to reach is assigned to `window` at the bottom,
+ * deliberately and by name.
  */
+(function () {
 
 // Configuration constants
 const ITERATIONS = window.cryptxConfig?.iterations || 100000; // fallback to old value
@@ -632,8 +644,29 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
 	}
 }
 
-// Keep everything reachable by name, also after minification
+// Keep everything reachable by name, also after minification.
+//
+// The three the plugin itself depends on are secureDecryptAndNavigate and
+// DeCryptX, which appear in the generated "javascript:" links, and
+// generateDeCryptXHandler, which the help tab documents for use in a theme.
+// The rest is kept because it has been exported for years; new code should use
+// the window.CryptX namespace, and the bare names will go with the next major
+// release, together with the deprecated encryptx().
 if (typeof window !== 'undefined') {
+	window.CryptX = {
+		secureDecryptAndNavigate,
+		DeCryptX,
+		DeCryptString,
+		generateSecureEmailLink,
+		generateDeCryptXHandler,
+		generateHashFromString,
+		handleCryptxLinkClick,
+		initCryptxLinkHandler,
+		SecureUtils,
+		LegacyEncryption,
+		SecureEncryption
+	};
+
 	window.secureDecryptAndNavigate = secureDecryptAndNavigate;
 	window.DeCryptX = DeCryptX;
 	window.DeCryptString = DeCryptString;
@@ -664,3 +697,4 @@ if (typeof module !== 'undefined' && module.exports) {
 		SecureUtils
 	};
 }
+})();

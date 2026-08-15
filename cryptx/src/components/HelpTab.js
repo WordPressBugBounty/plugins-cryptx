@@ -151,9 +151,32 @@ export default function HelpTab() {
 							'[cryptx opt_linktext="1" alt_linktext="Contact us"]info@example.com[/cryptx]'
 						}
 					</Snippet>
+					<p>
+						{ __(
+							'On top of the settings, four attributes describe the mail itself. They end up inside the encrypted link, so they stay hidden from spam bots just like the address:',
+							'cryptx'
+						) }
+					</p>
+					<Snippet>
+						{
+							'[cryptx subject="Price enquiry" cc="sales@example.com"]info@example.com[/cryptx]'
+						}
+					</Snippet>
+					<p>
+						{ __(
+							'Available are subject, body, cc and bcc — the headers RFC 6068 allows in a mailto link. Anything else is dropped. A link you wrote yourself with its own "?subject=" keeps it; the attribute only fills in where nothing is set.',
+							'cryptx'
+						) }
+					</p>
 					<p className="cryptx-help__note">
 						{ __(
-							'Older versions of this page listed attributes called "linktext" and "subject". Neither was ever evaluated; they were silently discarded.',
+							'The shortcode needs an address between its tags. Written self-closing, as [cryptx subject="…" /], there is nothing to protect and nothing is output — the attributes go nowhere.',
+							'cryptx'
+						) }
+					</p>
+					<p className="cryptx-help__note">
+						{ __(
+							'Until 4.1.0 the attribute "subject" was accepted and then silently discarded, and an address written as "info@example.com?subject=…" lost its subject on the way as well. Both work now. The attribute "linktext", also listed by older versions of this page, never existed — use alt_linktext.',
 							'cryptx'
 						) }
 					</p>
