@@ -3,9 +3,9 @@
  * Plugin Name:       CryptX
  * Plugin URI:        https://wordpress.org/plugins/cryptx/
  * Description:       CryptX encrypts email addresses in your posts, pages, comments, and text widgets to protect them from spam bots while keeping them readable for your visitors.
- * Version:           4.1.1
+ * Version:           4.2.0
  * Requires at least: 6.7
- * Tested up to:      7.0
+ * Tested up to:      7.1
  * Requires PHP:      8.1
  * Author:            Ralf Weber
  * Author URI:        https://weber-nrw.de/
@@ -36,7 +36,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('CRYPTX_VERSION', '4.1.1');
+define('CRYPTX_VERSION', '4.2.0');
 define('CRYPTX_PLUGIN_FILE', __FILE__);
 define('CRYPTX_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('CRYPTX_BASENAME', plugin_basename(__FILE__)); // Add this missing constant
@@ -139,9 +139,14 @@ add_action('plugins_loaded', function() {
         'CryptX\\CryptX',
         'CryptX\\Config',
         'CryptX\\SecureEncryption',
+        'CryptX\\Exposure',
+        'CryptX\\Block',
+        'CryptX\\ImageToken',
+        'CryptX\\Admin\\NetworkDefaults',
         'CryptX\\Admin\\SettingsPage',
         'CryptX\\Admin\\SettingsSchema',
         'CryptX\\Admin\\RestController',
+        'CryptX\\Admin\\SiteHealth',
     ];
 
     $missingClasses = [];
@@ -163,6 +168,21 @@ add_action('plugins_loaded', function() {
         $cryptx_instance = CryptX\CryptX::get_instance();
         $cryptx_instance->startCryptX();
         cryptx_register_action_links();
+
+        // Guarded here as well as inside register(), and deliberately not
+        // listed in $requiredClasses above. Both of those would load the file
+        // on every single front-end and admin request -- class_exists() runs
+        // the autoloader, and so does a static call -- to register commands
+        // that only exist under WP-CLI.
+        //
+        // class_exists() is still asked so that a package missing the file
+        // cannot raise a fatal Error, which catch (Exception) below would not
+        // have caught. It buys no notice: the commands are then simply absent.
+        // That is the right silence -- nothing a visitor or an administrator
+        // sees depends on them.
+        if (defined('WP_CLI') && WP_CLI && class_exists('CryptX\Cli')) {
+            CryptX\Cli::register();
+        }
     } catch (Exception $e) {
         cryptx_admin_notice(
             __('CryptX initialization failed: ', 'cryptx') . $e->getMessage()

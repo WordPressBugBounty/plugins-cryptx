@@ -15,7 +15,20 @@
 (function () {
 
 // Configuration constants
-const ITERATIONS = window.cryptxConfig?.iterations || 100000; // fallback to old value
+// The ceiling PHP already enforces (SecureEncryption::MAX_ITERATIONS), repeated
+// here so that no path can hand an absurd number to PBKDF2 and leave a
+// visitor's browser tab grinding.
+const MAX_ROUNDS = 1000000;
+
+// parseInt, because wp_localize_script turns every value into a string on the
+// way into the page -- so cryptxConfig.iterations arrives as "10000", and a
+// string fails Number.isInteger. Without this the clamp below applied only to
+// the value read from a link and never to this one, which is the opposite of
+// what one would assume from reading it.
+const ITERATIONS = Math.min(
+	parseInt(window.cryptxConfig?.iterations, 10) || 100000, // fallback to old value
+	MAX_ROUNDS
+);
 const KEY_LENGTH = window.cryptxConfig?.keyLength || 32;
 const IV_LENGTH = window.cryptxConfig?.ivLength || 16;
 const SALT_LENGTH = window.cryptxConfig?.saltLength || 16;
@@ -224,7 +237,23 @@ class LegacyEncryption {
  * Modern encryption class using Web Crypto API - PHP Compatible
  */
 class SecureEncryption {
-	static async deriveKey(password, salt) {
+	/**
+	 * @param {string} password
+	 * @param {Uint8Array} salt
+	 * @param {number} [iterations] What the link itself says it was made with.
+	 *   Left out only by links written before 4.2.0, which then fall back to
+	 *   the configured value -- the behaviour that made changing the setting
+	 *   kill every link already delivered.
+	 */
+	static async deriveKey(password, salt, iterations) {
+		// Clamped to the same ceiling PHP enforces. The value can only come
+		// from the server today -- KSES lets neither class nor data-* through
+		// for anyone without unfiltered_html, and anyone with it does not need
+		// this route -- but a number that reaches PBKDF2 unchecked is worth one
+		// line of arithmetic.
+		const rounds = Number.isInteger(iterations) && iterations > 0
+			? Math.min(iterations, MAX_ROUNDS)
+			: ITERATIONS;
 		const encoder = new TextEncoder();
 		const keyMaterial = await crypto.subtle.importKey(
 			'raw',
@@ -238,7 +267,7 @@ class SecureEncryption {
 			{
 				name: 'PBKDF2',
 				salt: salt,
-				iterations: ITERATIONS,
+				iterations: rounds,
 				hash: 'SHA-256'
 			},
 			keyMaterial,
@@ -279,7 +308,12 @@ class SecureEncryption {
 		return SecureUtils.arrayBufferToBase64(combined.buffer);
 	}
 
-	static async decrypt(encryptedData, password) {
+	/**
+	 * @param {string} encryptedData
+	 * @param {string} password
+	 * @param {number} [iterations] See deriveKey().
+	 */
+	static async decrypt(encryptedData, password, iterations) {
 		if (typeof encryptedData !== 'string' || typeof password !== 'string') {
 			throw new Error('Both encryptedData and password must be strings');
 		}
@@ -303,7 +337,7 @@ class SecureEncryption {
 			const encryptedDataOnly = combined.slice(saltLength + ivLength, saltLength + ivLength + encryptedDataLength);
 			const tag = combined.slice(-tagLength); // Last 16 bytes
 
-			const key = await this.deriveKey(password, new Uint8Array(salt));
+			const key = await this.deriveKey(password, new Uint8Array(salt), iterations);
 
 			// Reconstruct the encrypted data with tag for Web Crypto API
 			const encryptedWithTag = new Uint8Array(encryptedDataOnly.byteLength + tag.byteLength);
@@ -333,7 +367,7 @@ class SecureEncryption {
  * @param {string} encryptedUrl
  * @param {string} password
  */
-async function secureDecryptAndNavigate(encryptedUrl, password = 'default_key') {
+async function secureDecryptAndNavigate(encryptedUrl, password = 'default_key', iterations) {
 	if (typeof encryptedUrl !== 'string' || encryptedUrl.length === 0) {
 		console.error('Invalid encrypted URL provided');
 		return;
@@ -344,7 +378,7 @@ async function secureDecryptAndNavigate(encryptedUrl, password = 'default_key') 
 
 		// Try modern decryption first, then fall back to original algorithm
 		try {
-			decryptedUrl = await SecureEncryption.decrypt(encryptedUrl, password);
+			decryptedUrl = await SecureEncryption.decrypt(encryptedUrl, password, iterations);
 		} catch (modernError) {
 			console.warn('Modern decryption failed, trying original algorithm');
 			decryptedUrl = LegacyEncryption.originalDecrypt(encryptedUrl);
@@ -417,7 +451,13 @@ async function generateSecureEmailLink(emailAddress, password = 'default_key') {
 	const encryptedData = await SecureEncryption.encrypt(mailtoUrl, password);
 	const escapedData = SecureUtils.escapeJavaScript(encryptedData);
 
-	return `javascript:secureDecryptAndNavigate('${escapedData}', '${SecureUtils.escapeJavaScript(password)}')`;
+	// The iteration count goes in as well, for the same reason the PHP side
+	// puts it in data-cxi: encrypt() used whatever ITERATIONS says right now,
+	// and without recording that, a later change to the setting would leave
+	// this link unopenable. Nothing in the plugin calls this function -- it is
+	// here for anyone building links themselves -- which is exactly why it
+	// should not be the one place that still breaks.
+	return `javascript:secureDecryptAndNavigate('${escapedData}', '${SecureUtils.escapeJavaScript(password)}', ${ITERATIONS})`;
 }
 
 /**
@@ -461,7 +501,7 @@ function generateHashFromString(inputString) {
  * Markup produced by the PHP side (no javascript: URI, therefore no
  * 'unsafe-inline' needed in the Content-Security-Policy):
  *
- *   <a href="#" class="cryptx-link" data-cx="BASE64" data-cxk="PASSWORD" data-cxm="secure">…</a>
+ *   <a href="#" class="cryptx-link" data-cx="BASE64" data-cxk="PASSWORD" data-cxm="secure" data-cxi="10000">…</a>
  *   <a href="#" class="cryptx-link" data-cx="0i2p2h…" data-cxm="legacy">…</a>
  *
  * A single delegated listener on `document` covers links that are added later
@@ -473,6 +513,7 @@ const CRYPTX_LINK_CLASS = 'cryptx-link';
 const CRYPTX_ATTR_PAYLOAD = 'data-cx';
 const CRYPTX_ATTR_KEY = 'data-cxk';
 const CRYPTX_ATTR_MODE = 'data-cxm';
+const CRYPTX_ATTR_ITERATIONS = 'data-cxi';
 const CRYPTX_MAX_DELEGATION_DEPTH = 50;
 
 let cryptxLinkHandlerAttached = false;
@@ -536,9 +577,12 @@ function findCryptxLink(startNode) {
  * @param {string} payload
  * @param {string|null} password
  * @param {string|null} mode
+ * @param {string|number|null} [iterations] What data-cxi says. Links written
+ *   before 4.2.0 do not carry it and fall back to the configured value -- which
+ *   is why changing that value used to break every link already delivered.
  * @returns {Promise<string>}
  */
-async function cryptxDecryptPayload(payload, password, mode) {
+async function cryptxDecryptPayload(payload, password, mode, iterations) {
 	if (typeof payload !== 'string' || payload.length === 0) {
 		throw new Error('Missing or invalid data-cx payload');
 	}
@@ -557,9 +601,10 @@ async function cryptxDecryptPayload(payload, password, mode) {
 	}
 
 	const key = typeof password === 'string' && password.length > 0 ? password : 'default_key';
+	const rounds = parseInt(iterations, 10);
 
 	try {
-		return await SecureEncryption.decrypt(payload, key);
+		return await SecureEncryption.decrypt(payload, key, rounds);
 	} catch (secureError) {
 		if (normalizedMode === 'secure') {
 			throw secureError;
@@ -592,9 +637,10 @@ async function handleCryptxLinkClick(event) {
 	const payload = link.getAttribute(CRYPTX_ATTR_PAYLOAD);
 	const password = link.getAttribute(CRYPTX_ATTR_KEY);
 	const mode = link.getAttribute(CRYPTX_ATTR_MODE);
+	const iterations = link.getAttribute(CRYPTX_ATTR_ITERATIONS);
 
 	try {
-		const decryptedUrl = await cryptxDecryptPayload(payload, password, mode);
+		const decryptedUrl = await cryptxDecryptPayload(payload, password, mode, iterations);
 
 		const validatedUrl = SecureUtils.validateUrl(decryptedUrl);
 		if (!validatedUrl) {

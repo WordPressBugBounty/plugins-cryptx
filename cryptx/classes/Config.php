@@ -39,6 +39,8 @@ final class Config {
      * - 'c2i_fontSize': Font size for configuration (default: 10).
      * - 'c2i_fontRGB': Font color in RGB format (default: '#000000').
      * - 'echo': Flag to enable output directly to the browser (default: 1).
+     * - 'exemptAddresses': Comma-separated addresses CryptX leaves alone; an entry
+     *                     may also be a bare domain such as '@example.com' (default: '').
      * - 'whiteList': Comma-separated string of allowed file extensions (default: 'jpeg,jpg,png,gif').
      * - 'disable_rss': Flag to disable CryptX in RSS feeds by default (default: 1).
      * - 'encryption_mode': Encryption mode setting (default: 'secure').
@@ -77,10 +79,15 @@ final class Config {
         'c2i_fontSize' => 10,
         'c2i_fontRGB' => '#000000',
         'echo' => 1,
+        'exemptAddresses' => '',
         'whiteList' => 'jpeg,jpg,png,gif',
         'disable_rss' => 1,
         'encryption_mode' => 'secure',
         'encryption_password' => null,
+        'image_token_secret' => null,
+        'image_token_secret_previous' => null,
+        'image_token_secret_previous_until' => 0,
+        'secrets_rotated_at' => 0,
         'use_secure_encryption' => 1,
         'iterations' => 10000,
         'link_mode' => 'data',
@@ -101,11 +108,9 @@ final class Config {
     ];
 
     private array $options;
-    private array $originalOptions;
 
     public function __construct(array $options = []) {
         $this->options = array_merge(self::DEFAULT_OPTIONS, $options);
-        $this->originalOptions = $this->options;
     }
 
     public function getActiveFilters(): array {
@@ -175,19 +180,16 @@ final class Config {
         return self::WIDGET_FILTERS;
     }
 
-    public function updateFromShortcode(array $attributes, string $tag): void {
-        $this->originalOptions = $this->options;
-        $shortcodeOptions = shortcode_atts(
-            $this->options,
-            array_change_key_case($attributes, CASE_LOWER),
-            $tag
-        );
-        $this->options = array_merge($this->options, $shortcodeOptions);
-    }
-
-    public function restoreOriginalOptions(): void {
-        $this->options = $this->originalOptions;
-    }
+    // updateFromShortcode() and restoreOriginalOptions() used to sit here. They
+    // had no caller anywhere in the plugin -- CryptX::cryptXShortcode() does
+    // that job on the static option list -- and they were the more dangerous of
+    // the two implementations: they merged shortcode attributes straight into
+    // $this->options, which is what getEncryptionPassword() and
+    // getImageTokenSecret() read from and what save() writes to the database.
+    // Whoever revived them would have made key material settable by anyone
+    // allowed to write a post, and the guard added to cryptXShortcode() would
+    // not have covered it. Dead code that only waits for someone to call it is
+    // worse than no code.
 
     public function save(): void {
         update_option('cryptX', $this->options);
@@ -307,5 +309,177 @@ final class Config {
             $this->save();
         }
         return $this->options['encryption_password'];
+    }
+
+    /**
+     * The secret behind the image tokens -- and the one that is never published.
+     *
+     * getEncryptionPassword() above is handed to the browser with every link;
+     * it has to be, because the visitor's browser does the decrypting. Anything
+     * keyed with it is therefore readable by whoever reads the page, which is
+     * exactly the audience the image variant is hiding from. So the tokens in
+     * the image URLs get their own secret, and this one stays on the server.
+     *
+     * Stored rather than derived from the WordPress salts: rotating those --
+     * which an administrator may do at any time, and which only logs everyone
+     * out -- would invalidate every image URL in every cached page at once.
+     *
+     * @return string The secret, minted on first use and then kept.
+     */
+    public function getImageTokenSecret(): string
+    {
+        if (empty($this->options['image_token_secret'])) {
+            // No fallback to wp_generate_password() here, deliberately -- and
+            // that is the difference to getEncryptionPassword() above, which
+            // has one. If random_bytes() throws, random_int() throws too, and
+            // wp_rand() then falls back to a source that is not cryptographic.
+            // For the link password that costs nothing, because the value is
+            // published in every link anyway. For this one it is the whole
+            // protection: a guessable secret would let anybody rebuild the
+            // tokens and read the addresses back out of an access log, while
+            // the site went on reporting itself as protected.
+            //
+            // Returning nothing instead means ImageToken mints nothing, and
+            // getImageFromText() renders no picture. The link around it still
+            // works and the address is still hidden. Missing a picture is the
+            // better failure.
+            try {
+                $this->options['image_token_secret'] = bin2hex(random_bytes(32));
+            } catch (\Throwable $e) {
+                return '';
+            }
+
+            $this->save();
+        }
+
+        return (string) $this->options['image_token_secret'];
+    }
+
+    /**
+     * How long a replaced image secret keeps working.
+     *
+     * Long enough to outlive any ordinary page cache, short enough that a
+     * secret somebody wanted rid of does not stay usable indefinitely.
+     */
+    private const IMAGE_SECRET_GRACE = 30 * DAY_IN_SECONDS;
+
+    /**
+     * Replaces both secrets with fresh ones.
+     *
+     * The two behave completely differently under a change, and that is the
+     * whole reason this method exists rather than a line of code somewhere:
+     *
+     * The link password can be replaced at any moment with no consequence at
+     * all. It travels inside every link -- data-cxk, or the second argument of
+     * the javascript: call -- so a link already sitting in a cache carries the
+     * password it was made with and goes on working for ever. Measured, not
+     * assumed: the note in updateCryptXSettings() claiming that a new password
+     * kills cached links describes a format that no longer exists.
+     *
+     * The image secret is the opposite: it never leaves the server, so a token
+     * in a cached page can only be read while the secret that made it is still
+     * known. Replacing it therefore keeps the old one for a grace period, and
+     * ImageToken::read() falls back to it.
+     *
+     * @return void
+     */
+    public function rotateSecrets(): void
+    {
+        $previous = $this->peekImageTokenSecret();
+
+        unset($this->options['encryption_password'], $this->options['image_token_secret']);
+
+        if ($previous !== '') {
+            $this->options['image_token_secret_previous'] = $previous;
+            $this->options['image_token_secret_previous_until'] = time() + self::IMAGE_SECRET_GRACE;
+        }
+
+        // Minted here rather than left to the next page view, so that a failure
+        // is visible while an administrator is looking at the screen.
+        $this->getEncryptionPassword();
+        $this->getImageTokenSecret();
+
+        $this->options['secrets_rotated_at'] = time();
+
+        $this->save();
+    }
+
+    /**
+     * The replaced image secret, while it is still within its grace period.
+     *
+     * @return string The previous secret, or an empty string.
+     */
+    public function previousImageTokenSecret(): string
+    {
+        $until = (int) ($this->options['image_token_secret_previous_until'] ?? 0);
+
+        if ($until < time()) {
+            return '';
+        }
+
+        return (string) ($this->options['image_token_secret_previous'] ?? '');
+    }
+
+    /**
+     * Drops a replaced image secret once its grace period is over.
+     *
+     * Separate from the getter above, and called only from the settings screen,
+     * because the getter runs on the image endpoint -- on an unauthenticated
+     * request from a stranger. Writing an option there is the same mistake that
+     * was taken out of ImageToken::read() one round earlier: a stranger should
+     * not decide when this site writes to its own database.
+     *
+     * Returning '' is already enough to stop using the value. This is about not
+     * leaving a retired secret sitting in wp_options for ever next to the one
+     * that replaced it -- hygiene, not a hole: whoever can read that table has
+     * the current secret anyway.
+     *
+     * @return void
+     */
+    public function forgetExpiredImageTokenSecret(): void
+    {
+        $until = (int) ($this->options['image_token_secret_previous_until'] ?? 0);
+
+        if ($until >= time() || empty($this->options['image_token_secret_previous'])) {
+            return;
+        }
+
+        $this->options['image_token_secret_previous'] = null;
+        $this->options['image_token_secret_previous_until'] = 0;
+        $this->save();
+    }
+
+    /**
+     * When the secrets were last replaced, if ever.
+     *
+     * @return int A Unix timestamp, or 0.
+     */
+    public function secretsRotatedAt(): int
+    {
+        return (int) ($this->options['secrets_rotated_at'] ?? 0);
+    }
+
+    /**
+     * The image secret if there is one, without minting.
+     *
+     * Reading a token never needs one to exist: if there is no secret, no token
+     * was ever made and nothing can decode. Minting on the read path would let
+     * a stranger who calls the image endpoint decide the moment the secret
+     * comes into being -- and two such calls arriving together can each mint
+     * one, after which whichever loses has published image URLs that will never
+     * resolve again. Narrow, but the consequence outlives the request: those
+     * URLs sit in caches.
+     *
+     * To be precise about what this does and does not fix: it takes the timing
+     * away from a stranger. Two ordinary first page views arriving together can
+     * still each mint, with the same consequence -- the same race the link
+     * password has always had. That window closes at the first uncached render;
+     * it is not worth an option row of its own.
+     *
+     * @return string The stored secret, or an empty string.
+     */
+    public function peekImageTokenSecret(): string
+    {
+        return (string) ($this->options['image_token_secret'] ?? '');
     }
 }

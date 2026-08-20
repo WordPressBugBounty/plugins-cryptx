@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "cryptx/email",
+  "version": "4.2.0",
+  "title": "Protected email address",
+  "category": "text",
+  "icon": "email-alt",
+  "description": "An email address that spam bots cannot read but visitors can click.",
+  "keywords": [
+    "email",
+    "mail",
+    "address",
+    "spam",
+    "mailto"
+  ],
+  "textdomain": "cryptx",
+  "attributes": {
+    "address": {
+      "type": "string",
+      "default": ""
+    },
+    "linkText": {
+      "type": "string",
+      "default": ""
+    },
+    "subject": {
+      "type": "string",
+      "default": ""
+    },
+    "body": {
+      "type": "string",
+      "default": ""
+    },
+    "cc": {
+      "type": "string",
+      "default": ""
+    },
+    "bcc": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "example": {
+    "attributes": {
+      "address": "info@example.com",
+      "linkText": "Write to us"
+    }
+  },
+  "supports": {
+    "html": false,
+    "reusable": true,
+    "spacing": {
+      "margin": true,
+      "padding": true
+    },
+    "typography": {
+      "fontSize": true,
+      "lineHeight": true
+    }
+  },
+  "editorScript": "file:./index.js",
+  "editorStyle": "file:./index.css"
+}

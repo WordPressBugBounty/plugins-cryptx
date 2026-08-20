@@ -1,12 +1,15 @@
 {
   "name": "cryptx",
-  "version": "4.1.1",
-  "description": "Build setup for the CryptX settings screen. React and the component library come from WordPress itself, so only this plugin's own code is bundled.",
+  "version": "4.2.0",
+  "description": "Build setup for the CryptX settings screen and the editor block. React and the component library come from WordPress itself, so only this plugin's own code is bundled.",
   "private": true,
   "license": "GPL-2.0-or-later",
+  "comments": {
+    "entry-points": "Both entry points are named on purpose. wp-scripts scans src/ for block.json files, and as soon as it finds one it uses ONLY the entry points it derives from them -- the default src/index.js is dropped without a word. Adding the block that way would have shipped a release whose settings screen renders nothing. Naming them explicitly wins over the scan (see getWebpackEntryPoints in @wordpress/scripts). The 'block/index' name is what puts the result next to the block.json copied to build/block/, which is the directory register_block_type() is pointed at."
+  },
   "scripts": {
-    "build": "wp-scripts build",
-    "start": "wp-scripts start",
+    "build": "wp-scripts build index=src/index.js block/index=src/block/index.js",
+    "start": "wp-scripts start index=src/index.js block/index=src/block/index.js",
     "lint:js": "wp-scripts lint-js src"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@
 namespace CryptX\Admin;
 
 use CryptX\CryptX;
+use CryptX\Exposure;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -21,12 +22,6 @@ use WP_REST_Server;
 final class RestController
 {
     private const NAMESPACE = 'cryptx/v1';
-
-    /**
-     * The address used in the preview. RFC 2606 reserves example.com, so this
-     * can never be a real person's address.
-     */
-    private const SAMPLE_ADDRESS = 'info@example.com';
 
     /**
      * Hooks the routes in.
@@ -82,6 +77,36 @@ final class RestController
             'permission_callback' => [$this, 'checkPermission'],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/secrets/rotate', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'rotateSecrets'],
+            'permission_callback' => [$this, 'checkPermission'],
+        ]);
+
+        // Only on a network, and behind a different capability: these are the
+        // defaults a new site starts with, which is a network administrator's
+        // decision and not a site administrator's.
+        if (is_multisite()) {
+            register_rest_route(self::NAMESPACE, '/network-defaults', [
+                [
+                    'methods' => WP_REST_Server::READABLE,
+                    'callback' => [$this, 'getNetworkDefaults'],
+                    'permission_callback' => [$this, 'checkNetworkPermission'],
+                ],
+                [
+                    'methods' => WP_REST_Server::EDITABLE,
+                    'callback' => [$this, 'saveNetworkDefaults'],
+                    'permission_callback' => [$this, 'checkNetworkPermission'],
+                    'args' => [
+                        'values' => [
+                            'required' => true,
+                            'type' => 'object',
+                        ],
+                    ],
+                ],
+            ]);
+        }
+
         register_rest_route(self::NAMESPACE, '/changelog', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'getChangelog'],
@@ -123,15 +148,96 @@ final class RestController
     }
 
     /**
+     * The capability that guards the network defaults.
+     *
+     * Deliberately not the same one: a site administrator may configure their
+     * own site, and that is what manage_options is for. Deciding what every
+     * future site starts with is a different question, and on a network only a
+     * super administrator holds it.
+     *
+     * @return true|WP_Error
+     */
+    public function checkNetworkPermission()
+    {
+        if (is_multisite() && current_user_can('manage_network_options')) {
+            return true;
+        }
+
+        return new WP_Error(
+            'cryptx_forbidden',
+            __('You do not have sufficient permissions to manage the network defaults.', 'cryptx'),
+            ['status' => rest_authorization_required_code()]
+        );
+    }
+
+    /**
+     * The defaults a newly created site starts with.
+     *
+     * @return WP_REST_Response
+     */
+    public function getNetworkDefaults(): WP_REST_Response
+    {
+        return new WP_REST_Response([
+            'values' => array_merge(
+                array_diff_key(
+                    SettingsSchema::defaults(),
+                    array_flip(NetworkDefaults::notShareable())
+                ),
+                NetworkDefaults::get()
+            ),
+            'schema' => SettingsSchema::forClient(NetworkDefaults::notShareable()),
+        ]);
+    }
+
+    /**
+     * Stores the defaults a newly created site starts with.
+     *
+     * @param WP_REST_Request $request The request.
+     *
+     * @return WP_REST_Response
+     */
+    public function saveNetworkDefaults(WP_REST_Request $request): WP_REST_Response
+    {
+        NetworkDefaults::save((array) $request->get_param('values'));
+
+        return new WP_REST_Response([
+            'values' => array_merge(
+                array_diff_key(
+                    SettingsSchema::defaults(),
+                    array_flip(NetworkDefaults::notShareable())
+                ),
+                NetworkDefaults::get()
+            ),
+            'message' => __('Network defaults saved. Sites that already exist are not changed; these values apply to sites created from now on.', 'cryptx'),
+        ]);
+    }
+
+    /**
      * Current values plus the schema that describes them.
      *
      * @return WP_REST_Response
      */
     public function getSettings(): WP_REST_Response
     {
+        $config = CryptX::get_instance()->getConfig();
+
+        // Housekeeping, here rather than on the image endpoint: that one is
+        // reached by strangers, and a stranger should not decide when this site
+        // writes to its own database.
+        $config->forgetExpiredImageTokenSecret();
+
         return new WP_REST_Response([
             'values' => $this->currentValues(),
             'schema' => SettingsSchema::forClient(),
+            // When the secrets were last replaced, so the screen can say it.
+            // A rotation nobody meant to trigger is otherwise invisible.
+            //
+            // Formatted here, not in the browser: toLocaleDateString() uses the
+            // reader's time zone and language, wp_date() the site's. Two dates
+            // in the same card, one of each, would disagree by a day for any
+            // administrator sitting in a different zone from the site -- on a
+            // card whose whole job is to make an unexpected date stand out.
+            'secretsRotatedAt' => self::formatRotationDate($config->secretsRotatedAt()),
         ]);
     }
 
@@ -185,6 +291,64 @@ final class RestController
     }
 
     /**
+     * Replaces both secrets with fresh ones.
+     *
+     * Worth knowing before pressing it, and said on the screen as well: links
+     * already delivered keep working for ever, because the key travels inside
+     * them. Pictures do not -- their token is opened on the server -- so the
+     * replaced image secret is kept for a grace period and the answer says
+     * until when.
+     *
+     * @return WP_REST_Response
+     */
+    public function rotateSecrets(): WP_REST_Response
+    {
+        $cryptx = CryptX::get_instance();
+        $config = $cryptx->getConfig();
+
+        $config->rotateSecrets();
+
+        // The static option list and the Config instance were built when the
+        // request started; without this they would go on serving the replaced
+        // secret for the rest of it, and the preview underneath would render
+        // with a key the site no longer uses.
+        $cryptx->refreshForCurrentSite();
+
+        $graceEnds = $cryptx->getConfig()->previousImageTokenSecret() === ''
+            ? 0
+            : (int) (get_option('cryptX')['image_token_secret_previous_until'] ?? 0);
+
+        return new WP_REST_Response([
+            'values' => $this->currentValues(),
+            'graceEnds' => $graceEnds,
+            'secretsRotatedAt' => self::formatRotationDate($cryptx->getConfig()->secretsRotatedAt()),
+            'message' => $graceEnds > 0
+                ? sprintf(
+                    /* translators: %s: a date */
+                    __('New secrets created. Links already published keep working. Pictures made with the old secret keep working until %s.', 'cryptx'),
+                    // wp_date(), not date_i18n(): the latter expects a stamp
+                    // that has already been shifted by the site's offset, and
+                    // this one comes straight from time(). On a site two hours
+                    // ahead the date shown was a day out.
+                    wp_date(get_option('date_format'), $graceEnds)
+                )
+                : __('New secrets created. Links already published keep working.', 'cryptx'),
+        ]);
+    }
+
+    /**
+     * A rotation date in the site's own time zone and format.
+     *
+     * @param int $timestamp A Unix timestamp, or 0 for "never".
+     *
+     * @return string The formatted date, or an empty string.
+     */
+    private static function formatRotationDate(int $timestamp): string
+    {
+        return $timestamp > 0 ? wp_date(get_option('date_format'), $timestamp) : '';
+    }
+
+    /**
      * Renders the sample address with the values as they stand in the form.
      *
      * @param WP_REST_Request $request The request.
@@ -195,15 +359,27 @@ final class RestController
     {
         $overrides = SettingsSchema::sanitize((array) $request->get_param('values'));
 
+        // The exemption list is switched off for the measurement, exactly as in
+        // the Site Health check. The sample lives at example.com, and both the
+        // field's own help text and the FAQ use "@example.com" as the example
+        // to type -- so an administrator trying the feature out would have
+        // watched the preview declare their working installation readable.
+        // What the preview answers is whether the settings hide an address, not
+        // whether every address on the site is covered.
+        $overrides['exemptAddresses'] = '';
+
         $sample = sprintf(
             /* translators: %s: a sample email address */
             __('Write to %s if you have any questions.', 'cryptx'),
-            self::SAMPLE_ADDRESS
+            Exposure::SAMPLE_ADDRESS
         );
 
         $markup = CryptX::get_instance()->renderPreviewMarkup($overrides, $sample);
 
-        $exposure = $this->exposure($markup);
+        // CryptX\Exposure and not a method here: the Site Health check needs
+        // the same judgement, and two implementations would eventually
+        // disagree about the same page.
+        $exposure = Exposure::of($markup);
 
         return new WP_REST_Response([
             'markup' => $markup,
@@ -211,40 +387,8 @@ final class RestController
             'exposure' => $exposure,
             // Kept so an older cached copy of the screen still shows something
             // sensible rather than nothing.
-            'leaks' => $exposure === 'plain',
+            'leaks' => $exposure === Exposure::PLAIN,
         ]);
-    }
-
-    /**
-     * How exposed the sample address is in the produced markup.
-     *
-     * Three answers, not two. Several of the display options put the address
-     * into the markup as HTML entities -- in an alt text, for instance, where
-     * a screen reader needs it. A search of the raw markup finds nothing there
-     * and the screen used to report "no readable address", which is true of the
-     * bytes and false of the situation: any bot that decodes entities, and most
-     * do, reads it straight off. Saying so is the difference between a preview
-     * and a reassurance.
-     *
-     * @param string $markup The processed markup.
-     *
-     * @return string One of 'none', 'encoded' or 'plain'.
-     */
-    private function exposure(string $markup): string
-    {
-        $pattern = '/[_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,})/';
-
-        if (preg_match($pattern, $markup)) {
-            return 'plain';
-        }
-
-        $decoded = html_entity_decode($markup, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-        if (preg_match($pattern, $decoded)) {
-            return 'encoded';
-        }
-
-        return 'none';
     }
 
     /**

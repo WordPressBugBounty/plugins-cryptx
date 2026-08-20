@@ -26,13 +26,29 @@ final class SettingsSchema
     /**
      * Options that exist in the stored array but are never offered for editing.
      *
-     * 'version' and 'encryption_password' are written by the plugin itself;
+     * 'version' and the four secret-related keys are written by the plugin
+     * itself. Three of those are key material -- the retired image secret opens
+     * every token made before the last rotation -- and none of them may ever be
+     * settable from a form. Listing them here changes nothing on its own,
+     * because sanitize() already drops anything without a field definition;
+     * they are named so that the list matches its own description, which is how
+     * the shortcode equivalent came to be missing them for a release;
      * 'echo' is a leftover that no code path reads any more;
      * 'use_secure_encryption' is derived from 'encryption_mode' on save, see
      * deriveImpliedValues() -- two switches for one decision only ever
      * contradict each other.
      */
-    private const INTERNAL_KEYS = ['version', 'encryption_password', 'echo', 'use_secure_encryption'];
+    private const INTERNAL_KEYS = [
+        'version',
+        'encryption_password',
+        'image_token_secret',
+        'image_token_secret_previous',
+        'image_token_secret_previous_until',
+        'secrets_rotated_at',
+        'review_prompt_due',
+        'echo',
+        'use_secure_encryption',
+    ];
 
     /**
      * The tabs, in the order they appear.
@@ -133,7 +149,7 @@ final class SettingsSchema
                 'tab' => self::TAB_PROTECTION,
                 'section' => __('Recognition', 'cryptx'),
                 'label' => __('Turn plain addresses into links', 'cryptx'),
-                'help' => __('With this on, an address written as plain text becomes a working contact link and is protected. With it off, CryptX only protects addresses that were already linked -- a plain one stays readable for spam bots.', 'cryptx'),
+                'help' => __('With this on, an address written as plain text becomes a working contact link and is protected. With it off, CryptX only protects addresses that were already linked -- a plain one stays readable for spam bots. Widgets are the exception, as long as they are switched on above: there a plain address is linked and protected either way. That is long-standing behaviour and errs towards protection, so it has been left as it is rather than changed under people who rely on it.', 'cryptx'),
             ],
             'java' => [
                 'type' => 'choice',
@@ -168,7 +184,7 @@ final class SettingsSchema
                 'tab' => self::TAB_APPEARANCE,
                 'section' => __('What visitors see', 'cryptx'),
                 'label' => __('Instead of the address, show', 'cryptx'),
-                'help' => __('The address in the link target is always protected. This only decides what is written on the link itself.', 'cryptx'),
+                'help' => __('The address in the link target is always protected. This only decides what is written on the link itself. Note that both picture options trade accessibility for protection: a visitor using a screen reader or a text browser cannot read the address at all, only follow the link. The picture drawn by CryptX is made on your own server, and since 4.2.0 it is fetched under a web address that gives nothing away -- before that the email address stood in it, and so in your access log.', 'cryptx'),
                 'choices' => [
                     ['value' => 0, 'label' => __('The address with @ and . replaced', 'cryptx')],
                     ['value' => 1, 'label' => __('A text of your choice', 'cryptx')],
@@ -297,13 +313,21 @@ final class SettingsSchema
                 'label' => __('Offer a switch in the post editor', 'cryptx'),
                 'help' => __('Adds a "Disable CryptX for this post/page" box to the editor, which writes into the list above. Without it the list can still be edited here.', 'cryptx'),
             ],
+            'exemptAddresses' => [
+                'type' => 'addresslist',
+                'default' => '',
+                'tab' => self::TAB_EXCEPTIONS,
+                'section' => __('Individual addresses', 'cryptx'),
+                'label' => __('Addresses to leave alone', 'cryptx'),
+                'help' => __('Separated by commas. CryptX leaves these exactly as written -- no masking, no link, no encryption -- for an address a helpdesk has to read out of the page, or one in a code example. Write "@example.com" to cover a whole domain. Two limits on purpose: the shortcode and the block say "protect this one, here" and are never overruled by this list; and in comments only whole addresses count, never the domain form, so an exempt domain cannot be used to collect what visitors leave behind. (In comments WordPress makes a link out of a bare address by itself, before CryptX sees it.)', 'cryptx'),
+            ],
             'whiteList' => [
                 'type' => 'string',
                 'default' => 'jpeg,jpg,png,gif',
                 'tab' => self::TAB_EXCEPTIONS,
                 'section' => __('False positives', 'cryptx'),
                 'label' => __('Endings that are not addresses', 'cryptx'),
-                'help' => __('Anything ending in one of these is left alone. This is what keeps file names such as logo@2x.png from being treated as an email address. It cannot be used to exempt a particular address -- use the list of posts above for that.', 'cryptx'),
+                'help' => __('Anything ending in one of these is left alone. This is what keeps file names such as logo@2x.png from being treated as an email address. To exempt a real address, use the field above instead.', 'cryptx'),
             ],
             'disable_rss' => [
                 'type' => 'boolean',
@@ -321,7 +345,7 @@ final class SettingsSchema
                 'tab' => self::TAB_ADVANCED,
                 'section' => __('Encryption', 'cryptx'),
                 'label' => __('Key strengthening', 'cryptx'),
-                'help' => __('How much work goes into deriving the key. The cost is paid once per page, not per address. Higher makes life harder for anyone trying to unpick the addresses in bulk; lower renders pages faster.', 'cryptx'),
+                'help' => __('How much work goes into deriving the key. The cost is paid once per page, not per address. Higher makes life harder for anyone trying to unpick the addresses in bulk; lower renders pages faster. Changing it is safe: since 4.2.0 every link records what it was made with, so the ones already published keep working. Before that, changing this quietly broke all of them.', 'cryptx'),
                 'depends' => ['encryption_mode' => 'secure'],
                 'choices' => [
                     ['value' => 100000, 'label' => __('Thorough (100,000)', 'cryptx')],
@@ -375,19 +399,35 @@ final class SettingsSchema
     /**
      * The schema as the settings screen consumes it, with runtime values filled in.
      *
+     * @param array<int, string> $without Field keys to leave out -- the network
+     *   defaults screen uses this for the two settings that mean something
+     *   different on every site.
+     *
      * @return array<string, mixed>
      */
-    public static function forClient(): array
+    public static function forClient(array $without = []): array
     {
-        $fields = self::fields();
+        $fields = array_diff_key(self::fields(), array_flip($without));
         $out = [];
         foreach ($fields as $key => $definition) {
             $definition['key'] = $key;
             $out[] = $definition;
         }
 
+        // A tab whose every field was left out is not shown at all: an empty
+        // tab reads as a broken screen rather than as a deliberate omission.
+        // No tab loses everything today -- Exceptions keeps four fields even
+        // without the two per-site ones -- so this is for the next omission,
+        // not for the current one.
+        $used = array_unique(array_column($out, 'tab'));
+
+        $tabs = array_values(array_filter(
+            self::tabs(),
+            static fn(array $tab): bool => in_array($tab['id'], $used, true)
+        ));
+
         return [
-            'tabs' => self::tabs(),
+            'tabs' => $tabs,
             'fields' => $out,
         ];
     }
@@ -504,6 +544,50 @@ final class SettingsSchema
 
             case 'htmlid':
                 return sanitize_html_class((string) $value);
+
+            case 'addresslist':
+                // Two forms, and both have to survive: a whole address, and
+                // "@example.com" for a domain. sanitize_email() would eat the
+                // second one -- it needs a local part -- so the two are
+                // cleaned apart.
+                $entries = [];
+
+                foreach (explode(',', (string) $value) as $entry) {
+                    $entry = strtolower(trim($entry));
+
+                    if ($entry === '') {
+                        continue;
+                    }
+
+                    if (str_starts_with($entry, '@')) {
+                        $domain = substr($entry, 1);
+
+                        // A domain, judged by asking whether it makes a valid
+                        // address rather than by a pattern of our own.
+                        if (is_email('user@' . $domain)) {
+                            $entries[] = '@' . $domain;
+                        }
+
+                        continue;
+                    }
+
+                    // Rejected, not repaired. sanitize_email() strips whatever
+                    // it dislikes and hands back the rest, so a typo becomes a
+                    // different, perfectly valid address: "info@exam ple.com"
+                    // turns into "info@example.com", and a domain typed with an
+                    // umlaut loses the letter rather than the entry.
+                    // Silently exempting an address nobody
+                    // typed is the one thing this field must not do, and an
+                    // entry that vanishes is noticed -- one that changed is
+                    // not. The domain form above is already this strict.
+                    $address = sanitize_email($entry);
+
+                    if ($address !== '' && $address === $entry) {
+                        $entries[] = $address;
+                    }
+                }
+
+                return implode(',', array_unique($entries));
 
             case 'idlist':
                 $ids = array_filter(array_map('absint', explode(',', (string) $value)));

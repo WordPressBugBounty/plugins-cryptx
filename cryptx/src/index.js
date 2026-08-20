@@ -26,9 +26,17 @@ document.addEventListener( 'DOMContentLoaded', () => {
 	container.setAttribute( 'aria-busy', 'false' );
 	container.setAttribute( 'aria-label', __( 'CryptX settings', 'cryptx' ) );
 
+	// Two screens, one application. The site screen edits this site; the
+	// network screen edits what a newly created site starts with. PHP says
+	// which, because PHP is what knows which menu entry was opened.
+	const scope =
+		container.getAttribute( 'data-cryptx-scope' ) === 'network'
+			? 'network'
+			: 'site';
+
 	createRoot( container ).render(
 		<StrictMode>
-			<App />
+			<App scope={ scope } />
 		</StrictMode>
 	);
 } );

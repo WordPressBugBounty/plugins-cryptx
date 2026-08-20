@@ -135,14 +135,20 @@ export default function HelpTab() {
 				<CardBody>
 					<p>
 						{ __(
-							'The shortcode works even in posts you excluded from CryptX, which makes it the way to protect one address in otherwise untouched content.',
+							'In the editor, look for the "Protected email address" block — it does the same thing with fields instead of syntax, and it is the easier way in. The shortcode below is for everywhere a block cannot go: a widget, a custom field, a theme template.',
+							'cryptx'
+						) }
+					</p>
+					<p>
+						{ __(
+							'Both outrank the two ways of switching CryptX off: they work in posts you excluded, and inside them no address is exempt, however the list under Exceptions reads. That makes them the way to protect one address in otherwise untouched content.',
 							'cryptx'
 						) }
 					</p>
 					<Snippet>{ '[cryptx]info@example.com[/cryptx]' }</Snippet>
 					<p>
 						{ __(
-							'Any setting from this screen can be overridden for a single shortcode by using its option name, written in lower case:',
+							'Almost any setting from this screen can be overridden for a single shortcode by using its option name, written in lower case. The list of addresses to leave alone is the exception, and deliberately so: a shortcode says "protect this one", so nothing inside it is ever exempt.',
 							'cryptx'
 						) }
 					</p>
@@ -227,6 +233,57 @@ export default function HelpTab() {
 						{ `const link = document.createElement( 'a' );
 link.href = generateDeCryptXHandler( 'info@example.com' );
 link.textContent = 'Contact us';` }
+					</Snippet>
+				</CardBody>
+			</Card>
+
+			<Card className="cryptx-section">
+				<CardHeader>
+					<h2 className="cryptx-section__title">
+						{ __( 'On the command line', 'cryptx' ) }
+					</h2>
+				</CardHeader>
+				<CardBody>
+					<p>
+						{ __(
+							'With WP-CLI installed. The first two read and write the settings, through the same validation this screen uses.',
+							'cryptx'
+						) }
+					</p>
+					<Snippet>
+						{ `wp cryptx settings
+wp cryptx settings opt_linktext
+wp cryptx settings disable_rss 0` }
+					</Snippet>
+					<p>
+						{ __(
+							'The third is the one worth knowing about: it runs the body and the title of every published post through the filters that render it, and reports the ones that still carry a readable address. That is the question you have after changing a setting, and the preview above cannot answer it — it only ever renders a single sample.',
+							'cryptx'
+						) }
+					</p>
+					<Snippet>{ 'wp cryptx scan' }</Snippet>
+					<p className="cryptx-help__note">
+						{ __(
+							'A verdict of "encoded" means the address is in the page as HTML entities. That is invisible to a naive scanner and plain to anything that decodes them, which is most things — it is not the same as "hidden".',
+							'cryptx'
+						) }
+					</p>
+					<p className="cryptx-help__note">
+						{ __(
+							'An address in a post title is always reported, because CryptX cannot protect one: the title reaches the document head through WordPress itself, along a path no plugin filter touches. Take it out of the title. And what the scan does not cover: widgets, comments, feeds, and whatever a theme prints on its own.',
+							'cryptx'
+						) }
+					</p>
+					<p>
+						{ __(
+							'On a multisite network both take --url, so one shell loop covers every site:',
+							'cryptx'
+						) }
+					</p>
+					<Snippet>
+						{
+							'wp site list --field=url | xargs -I{} wp cryptx scan --url={}'
+						}
 					</Snippet>
 				</CardBody>
 			</Card>

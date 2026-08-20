@@ -132,6 +132,7 @@ export default function Field( { field, value, onChange } ) {
 			);
 
 		case 'idlist':
+		case 'addresslist':
 			return (
 				<TextareaControl
 					__nextHasNoMarginBottom

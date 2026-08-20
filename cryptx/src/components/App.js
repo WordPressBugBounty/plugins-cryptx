@@ -36,9 +36,22 @@ function tabFromLocation( tabs ) {
 	return known.includes( requested ) ? requested : tabs[ 0 ]?.id;
 }
 
-export default function App() {
+export default function App( { scope = 'site' } ) {
+	const isNetwork = scope === 'network';
+
+	// One route or the other. Everything below is the same screen either way --
+	// the network route hands back a schema without the two settings that mean
+	// something different on every site, so there is no second field list here
+	// that could fall behind the first.
+	const route = isNetwork
+		? '/cryptx/v1/network-defaults'
+		: '/cryptx/v1/settings';
+
 	const [ schema, setSchema ] = useState( null );
 	const [ values, setValues ] = useState( null );
+	// Only used by the secrets card on the Advanced tab, and read once: a
+	// rotation nobody meant to trigger is otherwise invisible.
+	const [ rotatedAt, setRotatedAt ] = useState( '' );
 	const [ savedValues, setSavedValues ] = useState( null );
 	const [ activeTab, setActiveTab ] = useState( null );
 	const [ notice, setNotice ] = useState( null );
@@ -47,11 +60,12 @@ export default function App() {
 	const [ confirmReset, setConfirmReset ] = useState( false );
 
 	useEffect( () => {
-		apiFetch( { path: '/cryptx/v1/settings' } )
+		apiFetch( { path: route } )
 			.then( ( response ) => {
 				setSchema( response.schema );
 				setValues( response.values );
 				setSavedValues( response.values );
+				setRotatedAt( response.secretsRotatedAt || '' );
 				setActiveTab( tabFromLocation( response.schema.tabs ) );
 			} )
 			.catch( ( error ) => {
@@ -60,7 +74,7 @@ export default function App() {
 						__( 'The settings could not be loaded.', 'cryptx' )
 				);
 			} );
-	}, [] );
+	}, [ route ] );
 
 	const isDirty = useMemo( () => {
 		if ( ! values || ! savedValues ) {
@@ -119,7 +133,7 @@ export default function App() {
 		setNotice( null );
 
 		apiFetch( {
-			path: '/cryptx/v1/settings',
+			path: route,
 			method: 'POST',
 			data: { values },
 		} )
@@ -137,7 +151,7 @@ export default function App() {
 				} );
 			} )
 			.finally( () => setSaving( false ) );
-	}, [ values ] );
+	}, [ values, route ] );
 
 	const reset = useCallback( () => {
 		setConfirmReset( false );
@@ -194,12 +208,21 @@ export default function App() {
 	return (
 		<div className="cryptx-settings">
 			<header className="cryptx-settings__header">
-				<h1>{ __( 'CryptX', 'cryptx' ) }</h1>
+				<h1>
+					{ isNetwork
+						? __( 'CryptX network defaults', 'cryptx' )
+						: __( 'CryptX', 'cryptx' ) }
+				</h1>
 				<p className="cryptx-settings__intro">
-					{ __(
-						'CryptX hides email addresses in your pages from spam bots while keeping them usable for your visitors.',
-						'cryptx'
-					) }
+					{ isNetwork
+						? __(
+								'What a newly created site starts with. Sites that already exist are never changed by this — every site keeps its own settings, and a site administrator can change theirs at any time. Two settings are missing here on purpose: excluded posts and the uploaded image refer to things that exist on one site only. One deserves a second look before you set it: an address on the list under Exceptions is left readable, and a network default puts it on every site created from now on.',
+								'cryptx'
+						  )
+						: __(
+								'CryptX hides email addresses in your pages from spam bots while keeping them usable for your visitors.',
+								'cryptx'
+						  ) }
 				</p>
 			</header>
 
@@ -227,6 +250,8 @@ export default function App() {
 						fields={ schema.fields }
 						values={ values }
 						onChange={ setValue }
+						rotatedAt={ rotatedAt }
+						isNetwork={ isNetwork }
 					/>
 				) }
 			</main>
@@ -250,17 +275,23 @@ export default function App() {
 								{ __( 'Save changes', 'cryptx' ) }
 							</Button>
 						</FlexItem>
-						<FlexItem>
-							<Button
-								variant="tertiary"
-								isDestructive
-								onClick={ () => setConfirmReset( true ) }
-								disabled={ isSaving }
-								__next40pxDefaultSize
-							>
-								{ __( 'Restore defaults', 'cryptx' ) }
-							</Button>
-						</FlexItem>
+						{ /* Only on the site screen: this route resets the
+						     settings of one site, which is not what a network
+						     administrator looking at the defaults would
+						     expect it to mean. */ }
+						{ ! isNetwork && (
+							<FlexItem>
+								<Button
+									variant="tertiary"
+									isDestructive
+									onClick={ () => setConfirmReset( true ) }
+									disabled={ isSaving }
+									__next40pxDefaultSize
+								>
+									{ __( 'Restore defaults', 'cryptx' ) }
+								</Button>
+							</FlexItem>
+						) }
 					</Flex>
 					{ /* The state is said in words as well as shown by the
 					     button, because a disabled button on its own reads as

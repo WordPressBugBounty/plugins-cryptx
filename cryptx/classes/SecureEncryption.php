@@ -191,20 +191,6 @@ class SecureEncryption
     }
 
     /**
-     * Gets current cache statistics
-     *
-     * @return array
-     */
-    public static function getCacheStats(): array
-    {
-        return [
-            'cache_size' => count(self::$keyCache),
-            'max_cache_size' => self::$maxCacheSize,
-            'memory_usage_bytes' => memory_get_usage(),
-        ];
-    }
-
-    /**
      * Decrypts encrypted data using AES-256-GCM - JavaScript compatible
      *
      * @param string $encryptedData Base64 encoded encrypted data
@@ -273,44 +259,17 @@ class SecureEncryption
         }
     }
 
-    /**
-     * Test encryption/decryption with debug output
-     *
-     * @param string $plaintext
-     * @param string $password
-     * @return array Debug information
-     */
-    public static function debugEncryption(string $plaintext, string $password): array
-    {
-        try {
-            $startTime = microtime(true);
-            $encrypted = self::encrypt($plaintext, $password);
-            $encryptTime = microtime(true) - $startTime;
-
-            $startTime = microtime(true);
-            $decrypted = self::decrypt($encrypted, $password);
-            $decryptTime = microtime(true) - $startTime;
-
-            return [
-                'success' => true,
-                'plaintext' => $plaintext,
-                'encrypted' => $encrypted,
-                'decrypted' => $decrypted,
-                'match' => ($plaintext === $decrypted),
-                'encrypted_length' => strlen($encrypted),
-                'binary_length' => strlen(base64_decode($encrypted)),
-                'encrypt_time_ms' => round($encryptTime * 1000, 2),
-                'decrypt_time_ms' => round($decryptTime * 1000, 2),
-                'cache_stats' => self::getCacheStats()
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-                'plaintext' => $plaintext
-            ];
-        }
-    }
+    // debugEncryption() and getCacheStats() used to sit here. The second was
+    // only ever called by the first, so removing one left the other behind --
+    // which is how dead code usually spreads.
+    //
+    // debugEncryption(): it encrypted a string, decrypted it
+    // again and returned both, plus timings and the key-cache statistics. It
+    // had no caller anywhere in the plugin and was shipped to every site all
+    // the same. Nothing was reachable through it -- it is a static method, not
+    // an endpoint -- but a method that hands back a plaintext next to its
+    // ciphertext is a poor thing to leave lying around for the next person who
+    // needs somewhere to hook a quick diagnosis.
 
     /**
      * Validates URL for security

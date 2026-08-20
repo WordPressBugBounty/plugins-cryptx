@@ -1,0 +1,15 @@
+/*
+ * Editor-only spacing.
+ *
+ * The controls opt into __nextHasNoMarginBottom, which is where WordPress is
+ * going and which keeps the deprecation notice out of the console -- but it
+ * leaves them touching. The stable component library has no vertical stack to
+ * do this with (VStack is still marked experimental, and an API WordPress
+ * reserves the right to remove is a poor thing to hang a block on), so six
+ * lines of flexbox do it instead.
+ */
+.cryptx-block-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}

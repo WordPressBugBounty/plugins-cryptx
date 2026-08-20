@@ -127,6 +127,31 @@
 	gap: 24px;
 }
 
+/* The secrets card explains before it offers. Same reading width as the help
+   texts below, for the same reason. */
+.cryptx-secrets__notice,
+.cryptx-secrets__confirm {
+	margin: 16px 0;
+}
+
+.cryptx-secrets__last {
+	color: var(--cryptx-muted, #646970);
+	font-size: 13px;
+}
+
+.cryptx-secrets__confirm {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.cryptx-secrets__confirm p {
+	flex-basis: 100%;
+	margin: 0;
+	font-weight: 600;
+}
+
 /* The help text under a control is the reason this screen exists; keep it
    readable rather than letting it stretch across a wide monitor. */
 .cryptx-field .components-base-control__help,

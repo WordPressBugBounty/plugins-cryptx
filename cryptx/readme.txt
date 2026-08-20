@@ -3,8 +3,8 @@ Contributors: d3395
 Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
-Tested up to: 7.0
-Stable tag: 4.1.1
+Tested up to: 7.1
+Stable tag: 4.2.0
 Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -23,9 +23,14 @@ CryptX protects your email addresses from spambots while keeping them readable a
 * **Multiple Encryption Methods** - JavaScript, Unicode, image replacement, and custom text options
 * **Widget Support** - Works with text widgets and other widget content
 * **RSS Feed Control** - Option to disable encryption in RSS feeds
-* **Whitelist Support** - Exclude specific domains from encryption
+* **False-Positive List** - Endings such as jpeg or png that keep file names like logo@2x.png from being read as addresses
+* **Exempt Addresses** - Leave a single address, or a whole domain, exactly as written
 * **Per-Post Control** - Enable/disable encryption on individual posts and pages
+* **Editor Block** - "Protected email address", with fields for link text, subject, cc and bcc
+* **WP-CLI** - `wp cryptx settings` and `wp cryptx scan`, both per site on a network
+* **Multisite** - every site keeps its own settings; a network default decides what a new one starts with
 * **Shortcode Support** - Use `[cryptx]email@example.com[/cryptx]` for manual encryption
+* **Site Health Check** - Reports whether your addresses really are hidden, measured rather than described
 * **Template Functions** - Developer-friendly functions for theme integration
 
 [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
@@ -38,6 +43,7 @@ CryptX protects your email addresses from spambots while keeping them readable a
 4. Advanced settings. The defaults are right for almost every site.
 5. Help: shortcode, template functions, and what changed in each release.
 6. The settings screen on a phone.
+7. The "Protected email address" block in the editor, with its link text and prefilled message.
 
 == Installation ==
 
@@ -64,6 +70,9 @@ exact dependency versions are pinned.
 The front end script `js/cryptx.min.js` is produced from `js/cryptx.js` with
 `terser@5.50.0 -c -m`.
 
+`js/admin-notice.js` has no build step at all. It is twenty lines, it runs only
+in the admin, and it ships exactly as written.
+
 == Frequently Asked Questions ==
 
 = How does CryptX protect my email addresses? =
@@ -76,13 +85,37 @@ CryptX is designed to be lightweight and only loads JavaScript when needed. The 
 
 = Can I exclude certain email addresses from encryption? =
 
-Not directly; currently, specific email addresses cannot be excluded. It is possible to add individual posts/pages to the exclusion list using their ID. These pages/posts will then not be processed by CryptX.
+Yes. Under Settings / CryptX / Exceptions there is a list of addresses to leave alone. Write "info@example.com" for a single address, or "@example.com" to cover every address at that domain. CryptX leaves those addresses exactly as written -- it does not mask, link or encrypt them -- which is what you want for an address a helpdesk has to read out of the page, or one shown in a code example.
+
+There are two limits on purpose. Inside `[cryptx]...[/cryptx]` -- and inside the "Protected email address" block, which is the same instruction in a different shape -- nothing is exempt: it says "protect this one, here", and a setting made months ago on another screen is not an answer to that. Where the shortcode is written somewhere WordPress never expands it, such as a hand-written excerpt, this reaches a little further: an exempt address standing next to it in the same text is protected as well. That is the harmless direction, but worth knowing if you exempted an address precisely so a machine could read it. And in comments only a whole address counts, never the domain form -- otherwise exempting your own domain would hand out every address at that domain a visitor happened to leave in a comment. One more thing worth knowing about comments: WordPress itself turns a bare address into a link before CryptX ever sees it, so an exempt address stays readable there but does become a link.
+
+That distinction rests on which filter the text arrives through, and only comments can be told apart with certainty. Forum and front-end submission plugins -- bbPress and BuddyPress among them -- send what a visitor wrote through the same filter as your own posts, so the domain form does apply there. If your site takes text from visitors that way, exempt the individual addresses rather than a whole domain.
+
+Two neighbouring settings answer different questions. The list of endings ("jpeg,jpg,png,gif") is what keeps file names such as logo@2x.png from being mistaken for an address in the first place. The list of post IDs switches CryptX off for a whole post or page.
+
+= What about addresses at an internationalised domain? =
+
+An address such as "post@münchen.de" is not protected -- CryptX looks for addresses using the ASCII form, so it does not recognise one with an accented or non-Latin domain in the first place. Write the domain in its punycode form ("post@xn--mnchen-3ya.de") and everything works as usual. The editor block says so where you type it; elsewhere the address is simply left as it was.
 
 = Does it work on a multisite network? =
 
 Yes, including network activation. Every site keeps its own settings and its own encryption secret, so nothing one site publishes can be read with another site's key. Sites created later are set up the same way as those that existed at activation time, and uninstalling removes the plugin's data from every site in the network.
 
-The settings live per site, because that is where the addresses and the design live. A site administrator configures their own site as usual; there is no network-wide settings screen.
+The settings live per site, because that is where the addresses and the design live. A site administrator configures their own site as usual. Since 4.2.0 a network administrator can set the defaults a newly created site starts with, under Network Admin / Settings / CryptX -- a starting point, not an instruction: sites that already exist are never changed by it, and a site administrator can change theirs at any time.
+
+Two settings are missing from that screen on purpose. The list of excluded post IDs and the uploaded image both refer to things that exist on one site only: post 17 on one site has nothing to do with post 17 on another, and copying that list would exclude the wrong posts -- which is precisely what left addresses unprotected on some networks before 4.1.1.
+
+= Can I use CryptX from the command line? =
+
+Yes, with WP-CLI. `wp cryptx settings` lists every setting with its current value; `wp cryptx settings <name>` reads one and `wp cryptx settings <name> <value>` writes it, through the same validation the settings screen uses.
+
+`wp cryptx scan` is the one worth knowing about. It runs every published post through the filters that render it and reports the ones that still carry a readable address -- the question you actually have after changing a setting, and the one the settings screen cannot answer, because it only ever renders a single sample. An "encoded" verdict means the address is in the page as HTML entities: invisible to a naive scanner, plain to anything that decodes them.
+
+It reads the body and the title of each post, and a "where" column says which of the two. Titles matter here because CryptX cannot protect them: a title goes into the document head through WordPress itself, along a path no plugin filter touches. An address in a post title is readable, and the only fix is to take it out of the title.
+
+What the scan does not cover: widgets, comments, feeds, and anything a theme prints on its own. It is a check on your posts and pages, not a clean bill of health for the whole site.
+
+On a network both take `--url`, so `wp site list --field=url | xargs -I{} wp cryptx scan --url={}` covers the whole network.
 
 = Does it work with contact forms? =
 
@@ -95,6 +128,18 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.2.0 =
+* **New** on a multisite network, the network administrator can set the defaults a newly created site starts with, under Network Admin / Settings / CryptX. Sites that already exist are never changed -- every site keeps its own settings, as it has since 4.1.1. Two settings are deliberately not shareable: excluded post IDs and the uploaded image refer to things that exist on one site only, and copying the first of them is exactly what left addresses unprotected before 4.1.1
+* **New** WP-CLI: `wp cryptx settings` reads and writes the settings, `wp cryptx scan` runs the body and the title of every published post through the real filters and reports the ones that still carry a readable address -- including addresses in titles, which CryptX cannot protect because a title reaches the page along a path no plugin filter touches. With `--url` both work per site, so a network can be handled from a shell loop rather than from forty screens
+* **Fixed** changing "Key strengthening" under Advanced silently broke every link that had already been delivered -- in every cached page and in every browser tab still open. The number of rounds was read from the page's configuration at the moment of the click, not from the link, so a link made with the old value could no longer be opened. Each link now records what it was made with, and the ones written before this update keep working as they did
+* **New** the encryption secrets can be replaced, under Advanced. Useful after restoring a backup that may have been seen by somebody else. Links already published keep working, because each carries the key it was made with; the secret behind the picture variant is opened on your server instead, so the replaced one is kept for 30 days and pictures in pages still cached go on working until then
+* **Security** with "The address drawn into a picture" selected, the address stood in the web address the picture is fetched under. It was written into the page as HTML entities, which looks hidden and is not -- the browser resolves them before it makes the request, so the address travelled in plain text in the request line of every image load: into your access log, and through every proxy and CDN on the way. The variant meant to hide addresses best handed them to more machines than a plainly written one would have. The picture is now fetched under a token that says nothing about the address, and the alt text no longer carries it either. Pictures in pages that were already cached keep working -- that fallback is a bridge over the lifetime of a page cache and is planned to go in 5.0
+* **New** a block for the editor: "Protected email address", with fields for the link text and for a prefilled subject, message, cc and bcc. Until now the only deliberate way to protect one address was to type a shortcode into a paragraph, which works but is invisible in the inserter. The block is rendered on the server on every request, so nothing encrypted is stored in the post -- a saved link would stop working the moment the encryption secret changed
+* **New** single addresses can be left alone. A new field under Exceptions takes a list -- "info@example.com" for one address, "@example.com" for every address at a domain -- and CryptX leaves those exactly as written: no masking, no link, no encryption. Until now the answer was that it could not be done, which left no way to keep a helpdesk address machine-readable or an address in a code example intact. Two limits on purpose: inside `[cryptx]...[/cryptx]` nothing is exempt, because a shortcode is a narrower instruction than a setting; and in comments only a whole address counts, not the domain form, so an exempt domain cannot be used to harvest the addresses visitors leave behind
+* **Fixed** the marker CryptX leaves behind while it sets a shortcode aside could be written by an author. Whoever typed it -- in a post explaining CryptX, in a code example, or in a comment -- had the set-aside content substituted into their text. The marker now carries a random part per page, so it cannot be typed
+* **New** a Site Health check reports whether addresses really are hidden. It runs a test address through the same filters your pages use and judges the result, instead of describing what the settings ought to do. Choices that deliberately leave addresses in the open -- unprotected feeds, excluded posts, a filter switched off -- are listed but do not count against the result
+* **New** after a feature update, CryptX asks once whether you would write a review. Once, and with every limit that word implies: a fortnight after the update rather than on the day of it, never after a bugfix release, gone by itself after a month even if you ignore it, and gone for good the moment you decline -- for you, not for your colleagues, who each get their own chance to answer. Nothing is attached to it: no setting unlocked in return, no reminder that comes back later
+
 = 4.1.1 =
 * **Fixed** a mailto link carrying a subject lost it, and the address inside the encrypted link was corrupted -- "sales@example.com?subject=Hello" became "sales@example.comsubjectHello" and the link went nowhere. Subject, body, cc and bcc now travel inside the encrypted link (thx to <a href="https://wordpress.org/support/users/pbmedia/">pbmedia</a>)
 * **New** the shortcode understands subject, body, cc and bcc: `[cryptx subject="Price enquiry" cc="sales@example.com"]info@example.com[/cryptx]`. The attribute "subject" was accepted and silently discarded before
@@ -329,8 +374,11 @@ For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/
 
 == Upgrade Notice ==
 
+= 4.2.0 =
+Contains a security fix: with the picture variant, the address stood in the web address the picture was fetched under, and so in your access log. Also fixes changing "Key strengthening", which until now broke every link already published. Nothing to do.
+
 = 4.1.1 =
-Bug fixes. Nothing to do on a single site. On a multisite network activated network-wide before 4.1.1, each site got the first site's settings: check every site under Settings > CryptX > Exceptions and remove post IDs it never excluded -- those posts show addresses unprotected. See the changelog.
+Bug fixes. Nothing to do on a single site. On a multisite network activated network-wide before 4.1.1, all sites received the settings of the first. Check each under Settings / CryptX / Exceptions and remove post IDs it never excluded -- those posts show addresses unprotected.
 
 
 = 4.1.0 =

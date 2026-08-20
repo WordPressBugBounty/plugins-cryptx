@@ -44,6 +44,7 @@ final class SettingsPage
 
         if (is_admin()) {
             add_action('admin_menu', [$this, 'registerMenu']);
+            add_action('network_admin_menu', [$this, 'registerNetworkMenu']);
         }
     }
 
@@ -61,6 +62,32 @@ final class SettingsPage
             'manage_options',
             self::MENU_SLUG,
             [$this, 'render']
+        );
+
+        if ($hook) {
+            add_action('load-' . $hook, [$this, 'onLoad']);
+        }
+    }
+
+    /**
+     * Adds the network entry, for the defaults a new site starts with.
+     *
+     * Under the network's own Settings and behind manage_network_options: a
+     * site administrator configures their own site, a super administrator
+     * decides what the next site begins with. Two different questions, two
+     * different capabilities.
+     *
+     * @return void
+     */
+    public function registerNetworkMenu(): void
+    {
+        $hook = add_submenu_page(
+            'settings.php',
+            _x('CryptX', 'CryptX network defaults page', 'cryptx'),
+            _x('CryptX', 'CryptX network defaults menu', 'cryptx'),
+            'manage_network_options',
+            self::MENU_SLUG,
+            [$this, 'renderNetwork']
         );
 
         if ($hook) {
@@ -117,7 +144,14 @@ final class SettingsPage
 
         // The media library picker for the "image from the media library"
         // option needs the classic media modal to be present.
-        wp_enqueue_media();
+        //
+        // Not in the network backend: the one field that needs it is left out
+        // of the network defaults on purpose -- an attachment id means nothing
+        // on another site -- and there is no media library there to pick from
+        // either.
+        if (!is_network_admin()) {
+            wp_enqueue_media();
+        }
     }
 
     /**
@@ -143,11 +177,42 @@ final class SettingsPage
             wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'cryptx'));
         }
 
-        echo '<div class="wrap cryptx-settings-root" id="cryptx-settings-root">';
+        $this->renderRoot('site', __('Loading the settings…', 'cryptx'));
+    }
+
+    /**
+     * The same application, told that it is editing the network defaults.
+     *
+     * @return void
+     */
+    public function renderNetwork(): void
+    {
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'cryptx'));
+        }
+
+        $this->renderRoot('network', __('Loading the network defaults…', 'cryptx'));
+    }
+
+    /**
+     * The container the application mounts into.
+     *
+     * @param string $scope Either 'site' or 'network'.
+     * @param string $loading What to show until the application takes over.
+     *
+     * @return void
+     */
+    private function renderRoot(string $scope, string $loading): void
+    {
+        printf(
+            '<div class="wrap cryptx-settings-root" id="cryptx-settings-root" data-cryptx-scope="%s">',
+            esc_attr($scope)
+        );
+
         // Shown until the application takes over, and the only thing left if
         // JavaScript is unavailable.
         echo '<h1>' . esc_html__('CryptX', 'cryptx') . '</h1>';
-        echo '<p>' . esc_html__('Loading the settings…', 'cryptx') . '</p>';
+        echo '<p>' . esc_html($loading) . '</p>';
         echo '</div>';
     }
 }

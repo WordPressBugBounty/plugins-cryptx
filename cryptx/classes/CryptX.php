@@ -38,13 +38,44 @@ final class CryptX
     private const MAILTO_ATTRIBUTES = ['subject', 'body', 'cc', 'bcc'];
 
     /**
-     * Filters after which WordPress expands shortcodes.
+     * The filters whose content a visitor wrote, not the site owner.
      *
-     * Measured, not assumed: has_filter($name, 'do_shortcode') is 11 for these
-     * four and false for the other five CryptX hangs on. Only here may an
-     * unexpanded [cryptx] be set aside, because only here does something come
-     * along afterwards to deal with it.
+     * A setting is the owner speaking about their own pages. Where the text
+     * came in from outside, a blanket rule that switches protection off has to
+     * be read narrowly -- see isAddressExempt().
+     *
+     * Only comments can be told apart with certainty. Forum and front-end
+     * submission plugins -- bbPress, BuddyPress -- send visitor text through
+     * 'the_content', which is also the owner's own filter, so no name can
+     * separate the two. That is a limit of the approach and is documented in
+     * the readme rather than papered over here.
      */
+    private const VISITOR_WRITTEN_FILTERS = ['comment_text', 'comment_text_rss'];
+
+    /**
+     * Option keys a shortcode attribute must never reach.
+     *
+     * A shortcode may be written by anybody who may write a post. Key material
+     * is not a presentation setting.
+     */
+    private const NOT_SETTABLE_BY_SHORTCODE = [
+        'encryption_password',
+        'image_token_secret',
+        // The retired image secret is key material too -- it opens every token
+        // made before the last rotation. Leaving it out was the exact mistake
+        // this list exists to prevent, made one release after the list was
+        // written.
+        'image_token_secret_previous',
+        'image_token_secret_previous_until',
+        'secrets_rotated_at',
+        'version',
+        // Not key material, but not presentation either: shortcode_atts()
+        // makes every key of the option array settable, so leaving this one in
+        // would let anybody who may write a post move the date on which the
+        // site owner is asked for a review.
+        'review_prompt_due',
+    ];
+
     /**
      * The feed counterpart of each content filter.
      *
@@ -58,6 +89,14 @@ final class CryptX
         'comment_text' => 'comment_text_rss',
     ];
 
+    /**
+     * Filters after which WordPress expands shortcodes.
+     *
+     * Measured, not assumed: has_filter($name, 'do_shortcode') is 11 for these
+     * four and false for the other five CryptX hangs on. Only here may an
+     * unexpanded [cryptx] be set aside, because only here does something come
+     * along afterwards to deal with it.
+     */
     private const SHORTCODE_EXPANDED_AFTER = [
         'the_content',
         'render_block',
@@ -67,6 +106,16 @@ final class CryptX
     const ASCII_VALUES_BLACKLIST = ['32', '34', '39', '60', '62', '63', '92', '94', '96', '127'];
     /** Upper bound for the text rendered into a PNG, see cryptXtinyUrl(). */
     private const MAX_IMAGE_TEXT_LENGTH = 254;
+
+    /**
+     * Upper bound for the path segment the image endpoint reads.
+     *
+     * Wider than the text it may draw, because a token is longer than the
+     * address inside it -- padded to a multiple of 32, plus IV and tag, plus
+     * base64. Wide enough for the longest address the drawing limit allows,
+     * and still nowhere near a size that could hurt.
+     */
+    private const MAX_IMAGE_REQUEST_LENGTH = 512;
     private static ?self $instance = null;
     private static array $cryptXOptions = [];
     private static int $imageCounter = 0;
@@ -94,15 +143,33 @@ final class CryptX
      */
     private static ?array $excludedIdCache = null;
     private static ?array $whiteListCache = null;
+    private static ?array $exemptAddressCache = null;
+
+    /**
+     * True while the shortcode handler is processing its own content.
+     *
+     * Set in one place rather than threaded through the three stages: each of
+     * them already carries a shortcode flag, but the decisions that need it sit
+     * inside preg_replace_callback() handlers with fixed signatures, and
+     * rewriting that machinery to pass an argument would risk more than it
+     * buys.
+     */
+    private bool $inShortcode = false;
 
     private const FONT_EXTENSION = 'ttf';
     private const PAYPAL_DONATION_URL = 'https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=4026696';
     private Admin\SettingsPage $settingsPage;
+    private Admin\SiteHealth $siteHealth;
+    private Admin\ReviewNotice $reviewNotice;
+    private Block $block;
     private Config $config;
 
     private function __construct()
     {
         $this->settingsPage = new Admin\SettingsPage();
+        $this->siteHealth = new Admin\SiteHealth();
+        $this->reviewNotice = new Admin\ReviewNotice();
+        $this->block = new Block();
         $this->config = new Config(get_option('cryptX', []));
         self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
     }
@@ -143,6 +210,9 @@ final class CryptX
         // Doing it here rather than in the constructor keeps the hooks out of
         // object construction, where they are easy to trigger by accident.
         $this->settingsPage->register();
+        $this->siteHealth->register();
+        $this->reviewNotice->register();
+        $this->block->register();
 
         $this->checkAndUpdateVersion();
         $this->addUniversalWidgetFilters(); // Add this line
@@ -204,9 +274,37 @@ final class CryptX
     private function checkAndUpdateVersion(): void
     {
         $currentVersion = self::$cryptXOptions['version'] ?? null;
+
         if ($currentVersion && version_compare(CRYPTX_VERSION, $currentVersion) > 0) {
             $this->updateCryptXSettings();
+
+            return;
         }
+
+        if ($currentVersion) {
+            return;
+        }
+
+        // No stamp at all, and the option nevertheless exists. That is not the
+        // fresh install it looks like: Config::save() writes the whole option
+        // array whenever it has to mint a secret, and on a front-end request
+        // that happens without installCryptX() ever running -- so the row is
+        // created with 'version' => null, from Config::DEFAULT_OPTIONS.
+        //
+        // Left alone, that state is permanent. updateCryptXSettings() treats a
+        // null version as "nothing to migrate" and returns, and nothing else
+        // ever writes the stamp, so every future migration is skipped in
+        // silence. Stamping it here costs one write, once.
+        //
+        // Stamping rather than migrating is the right half: a null version
+        // means there is no earlier CryptX data to bring forward, which is
+        // exactly the case the migrations already decline to handle.
+        if (get_option('cryptX', null) === null) {
+            return;
+        }
+
+        self::$cryptXOptions['version'] = CRYPTX_VERSION;
+        update_option('cryptX', self::$cryptXOptions);
     }
 
     /**
@@ -456,12 +554,37 @@ final class CryptX
         // "[cryptx]" stays visible in the output and the address inside it is
         // obfuscated like any other. Ugly, and the same as before -- but the
         // address is covered.
-        if (stripos($content, '[cryptx') === false
-            || !in_array(current_filter(), self::SHORTCODE_EXPANDED_AFTER, true)) {
+        if (stripos($content, '[cryptx') === false) {
             return $process($content);
         }
 
+        if (!in_array(current_filter(), self::SHORTCODE_EXPANDED_AFTER, true)) {
+            // The shortcode never runs here, so cryptXShortcode() never sets
+            // its flag -- and without it the exemption list would win over a
+            // "[cryptx]" that was written precisely to overrule it. On a site
+            // that exempts its own domain, an address wrapped in a shortcode
+            // inside a hand-written excerpt or a custom field would have gone
+            // out in the clear: not a shortcoming of the new list, but a step
+            // back from 4.1.1, which obfuscated it.
+            //
+            // The flag covers the whole string rather than the shortcode's
+            // body, because finding the body means splitting the content, and
+            // splitting changes what the autolink patterns see either side of
+            // the cut. The cost is that an exempt address elsewhere in the same
+            // excerpt is obfuscated too. That is the harmless direction: too
+            // much protection in a rare case, never too little.
+            $wasInShortcode = $this->inShortcode;
+            $this->inShortcode = true;
+
+            try {
+                return $process($content);
+            } finally {
+                $this->inShortcode = $wasInShortcode;
+            }
+        }
+
         $store = [];
+        $prefix = $this->maskingPrefix('sc');
 
         // WordPress' own idea of what a shortcode looks like, rather than a
         // hand-rolled one: it knows the self-closing form, the enclosing form
@@ -470,7 +593,7 @@ final class CryptX
 
         $masked = preg_replace_callback(
             $pattern,
-            static function (array $match) use (&$store): string {
+            static function (array $match) use (&$store, $prefix): string {
                 // "[[cryptx]...[/cryptx]]" is how a page shows a shortcode
                 // instead of running it -- an instructions page explaining
                 // CryptX, typically. do_shortcode() deliberately leaves it as
@@ -484,7 +607,7 @@ final class CryptX
 
                 $store[] = $match[0];
 
-                return sprintf('<!--cryptx:%d-->', count($store) - 1);
+                return sprintf('<!--%s:%d-->', $prefix, count($store) - 1);
             },
             $content
         );
@@ -512,7 +635,7 @@ final class CryptX
         }
 
         $tokens = array_map(
-            static fn(int $index): string => sprintf('<!--cryptx:%d-->', $index),
+            static fn(int $index): string => sprintf('<!--%s:%d-->', $prefix, $index),
             array_keys($store)
         );
 
@@ -619,13 +742,32 @@ final class CryptX
 
         // Update options if attributes provided
         if (!empty($attributes)) {
-            self::$cryptXOptions = shortcode_atts(
+            // shortcode_atts() keeps whatever is in the defaults it is given,
+            // so the option array decides which attribute names have an effect
+            // -- and the option array holds the two secrets. Nothing reads them
+            // from here today (both go through Config), so this changes no
+            // behaviour; it is here so that the next person to reach for
+            // self::$cryptXOptions cannot accidentally make key material
+            // settable by anyone who may write a post.
+            $overridable = array_diff_key(
+                $this->loadCryptXOptionsWithDefaults(),
+                array_flip(self::NOT_SETTABLE_BY_SHORTCODE)
+            );
+
+            self::$cryptXOptions = array_merge(
+                array_intersect_key(
                     $this->loadCryptXOptionsWithDefaults(),
-                    $attributes,
-                    $tag
+                    array_flip(self::NOT_SETTABLE_BY_SHORTCODE)
+                ),
+                shortcode_atts($overridable, $attributes, $tag)
             );
             self::resetOptionCaches();
         }
+
+        // Saved and restored rather than set to false at the end: should this
+        // ever run nested, the outer shortcode must keep its own state.
+        $wasInShortcode = $this->inShortcode;
+        $this->inShortcode = true;
 
         try {
             // Process content (inline the encryptAndLinkContent logic)
@@ -646,6 +788,7 @@ final class CryptX
             // Restored in a finally block: self::$cryptXOptions is static, so
             // an exception escaping from here would leave the shortcode's
             // values in place for the rest of the request.
+            $this->inShortcode = $wasInShortcode;
             self::$cryptXOptions = $this->loadCryptXOptionsWithDefaults();
             self::resetOptionCaches();
         }
@@ -711,13 +854,55 @@ final class CryptX
             return;
         }
 
-        // The text comes straight from the URL. Without a bound, a long request
-        // would size the canvas up accordingly and exhaust the memory limit --
-        // a cheap denial of service. No address is anywhere near this long.
-        $msg = substr(rawurldecode($params[count($params) - 1]), 0, self::MAX_IMAGE_TEXT_LENGTH);
-        if ($msg === '') {
+        // Two different bounds, and they used to be one. What has to be limited
+        // is the text that gets DRAWN -- without a bound a long request sizes
+        // the canvas up accordingly and exhausts the memory limit, a cheap
+        // denial of service. What arrives in the URL is now a token, and a
+        // token is longer than the address inside it: cutting the request at
+        // the drawing limit silently broke every address from about 160
+        // characters upwards, because the token was truncated before it could
+        // be read. So the request gets a bound of its own, wide enough for any
+        // token and still far from anything that could hurt.
+        $requested = substr(rawurldecode($params[count($params) - 1]), 0, self::MAX_IMAGE_REQUEST_LENGTH);
+        if ($requested === '') {
             return;
         }
+
+        $msg = ImageToken::read($requested);
+
+        if ($msg === '') {
+            // No token: either an URL from a page cached before the update, or
+            // somebody asking for arbitrary text to be drawn. Pages cached
+            // before the update carry the address entity-encoded, and dropping
+            // them would leave a broken image where an address should be for as
+            // long as the cache lives -- so they are still served.
+            //
+            // But only if what they ask for really is an address. That is the
+            // difference to before: this endpoint used to draw whatever text a
+            // request named, which made it a picture generator for anyone who
+            // found it. The old form stays workable, the abuse does not.
+            //
+            // The entity decoding is belt and braces with no path to it, and
+            // that is worth saying so nobody later mistakes it for a tested
+            // guarantee: a browser resolves the entities before it makes the
+            // request, so what arrives here is the plain address. The encoded
+            // form cannot even reach this line -- sanitize_text_field() above
+            // strips percent sequences, and an unencoded "#" is cut off as a
+            // fragment. It stays because it costs nothing and would carry a
+            // proxy that did deliver the encoded form.
+            $decoded = html_entity_decode($requested, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            if (!Exposure::isAddress($decoded)) {
+                return;
+            }
+
+            $msg = $decoded;
+        }
+
+        // Whichever way it arrived, this is the bound that matters: it is what
+        // gets drawn, and therefore what sizes the canvas. Exposure::isAddress()
+        // has no length limit of its own.
+        $msg = substr($msg, 0, self::MAX_IMAGE_TEXT_LENGTH);
 
         $size = (int) (self::$cryptXOptions['c2i_fontSize'] ?? 10);
         $size = max(1, min(96, $size));
@@ -829,6 +1014,18 @@ final class CryptX
         $widgetFilters = $this->config->getWidgetFilters();
 
         foreach ($widgetFilters as $widgetFilter) {
+            // No isAutolinkEnabled() check here, unlike the branch above that
+            // handles every other filter -- so switching autolink off leaves it
+            // on in widgets. Measured, not assumed: with autolink=0,
+            // has_filter() is false for the_content, the_excerpt and
+            // comment_text and true for all three widget filters.
+            //
+            // Left as it is on purpose. The difference errs towards protection:
+            // a plain address in a sidebar is linked and encrypted rather than
+            // left readable. Honouring the setting here would mean an update
+            // that makes addresses readable on sites that never asked for that,
+            // which is the one direction this plugin must not move in silently.
+            // The setting's help text says so instead.
             $this->addAutoLinkFilters($widgetFilter, 11);
             $this->addOtherFilters($widgetFilter);
         }
@@ -867,6 +1064,7 @@ final class CryptX
     {
         self::$excludedIdCache = null;
         self::$whiteListCache = null;
+        self::$exemptAddressCache = null;
     }
 
     /**
@@ -936,7 +1134,7 @@ final class CryptX
      */
     private function encodeEmailToLinkText(array $Match): string
     {
-        if ($this->inWhiteList($Match)) {
+        if ($this->inWhiteList($Match) || $this->isAddressExempt($Match[1])) {
             return $Match[1];
         }
         switch (self::$cryptXOptions['opt_linktext']) {
@@ -965,6 +1163,163 @@ final class CryptX
         }
 
         return $text;
+    }
+
+    /**
+     * A placeholder that content cannot forge.
+     *
+     * The masking steps set a piece of content aside, run something over the
+     * rest, and put it back by searching for the placeholder they left. With a
+     * fixed placeholder that search cannot tell its own marker from one an
+     * author typed: a post explaining CryptX, a code example, or a comment
+     * written by a stranger. Whoever wrote it got the stored value substituted
+     * into their text -- an address they never wrote, appearing in their post.
+     *
+     * Nothing could be injected that way, because the store only ever holds
+     * matches of the address pattern and those cannot contain a markup
+     * character. But it altered content, and content nobody typed is a bug
+     * whatever its contents. The random part per call closes it: the author
+     * cannot write a placeholder that this call will look for.
+     *
+     * @param string $kind Distinguishes the two masking steps.
+     *
+     * @return string The prefix, unique to this call.
+     */
+    private function maskingPrefix(string $kind): string
+    {
+        try {
+            $nonce = bin2hex(random_bytes(8));
+        } catch (\Exception $e) {
+            // Only reachable when the platform has no source of randomness at
+            // all. Falling back keeps the page rendering; wp_rand() is seeded
+            // well enough for a marker that lives for one request.
+            $nonce = dechex(wp_rand(0, PHP_INT_MAX)) . dechex(wp_rand(0, PHP_INT_MAX));
+        }
+
+        return 'cryptx-' . $kind . '-' . $nonce;
+    }
+
+    /**
+     * Runs a step with the exempt addresses masked out of the content.
+     *
+     * @param string $content The content.
+     * @param callable $process Receives the masked content, returns the result.
+     *
+     * @return string The processed content, addresses back in place.
+     */
+    private function withExemptAddressesProtected(string $content, callable $process): string
+    {
+        if (strpos($content, '@') === false) {
+            return $process($content);
+        }
+
+        $store = [];
+        $prefix = $this->maskingPrefix('keep');
+
+        $masked = preg_replace_callback(
+            '/[_a-zA-Z0-9-+]+(\.[_a-zA-Z0-9-+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(\.[a-zA-Z]{2,})/',
+            function (array $match) use (&$store, $prefix): string {
+                if (!$this->isAddressExempt($match[0])) {
+                    return $match[0];
+                }
+
+                $store[] = $match[0];
+
+                // No "@" in the token, so none of the address patterns can see
+                // it, and no square brackets, so a shortcode cannot be torn
+                // apart by it either.
+                return sprintf('<!--%s:%d-->', $prefix, count($store) - 1);
+            },
+            $content
+        );
+
+        if ($masked === null) {
+            return $process($content);
+        }
+
+        $result = $process($masked);
+
+        $tokens = array_map(
+            static fn(int $index): string => sprintf('<!--%s:%d-->', $prefix, $index),
+            array_keys($store)
+        );
+
+        return str_replace($tokens, $store, $result);
+    }
+
+    /**
+     * Whether an address is one the site owner asked CryptX to leave alone.
+     *
+     * The endings list next door answers a different question -- it keeps
+     * "logo@2x.png" from being mistaken for an address at all. This one is
+     * about real addresses that are meant to stay readable: a support address
+     * a helpdesk parses out of the page, an address in a code example, an
+     * address a partner site scrapes on purpose. Until now the answer was "not
+     * possible", and the FAQ said so.
+     *
+     * An entry is either a whole address, or "@example.com" for every address
+     * at that domain. The domain form is the common case: a site tends to want
+     * its own addresses treated alike.
+     *
+     * Two places deliberately do not honour the list, both for the same
+     * reason -- a blanket setting must not overrule a narrower instruction:
+     *
+     * Inside "[cryptx]...[/cryptx]" nothing is exempt. The shortcode is
+     * somebody writing "protect this one, here"; a list entry set months ago on
+     * another screen is not an answer to that. The reverse order let a site
+     * that had exempted its own domain publish, in the clear, exactly the
+     * address it had wrapped in a shortcode to protect.
+     *
+     * In comments only the whole-address form counts. Comments are written by
+     * strangers, and "@example.com" is a statement about the site's own
+     * addresses, not about every address at that domain a visitor might leave
+     * behind. Honouring the domain form there turned the comment section into a
+     * harvest for anyone who could guess the domain. A whole address is
+     * different: the site owner named that one address exactly, and a visitor
+     * quoting it is quoting the site's own.
+     *
+     * @param string $address The address, as written in the content.
+     *
+     * @return bool True when CryptX must not touch it.
+     */
+    private function isAddressExempt(string $address): bool
+    {
+        if ($this->inShortcode) {
+            return false;
+        }
+
+        if (self::$exemptAddressCache === null) {
+            $raw = (string) (self::$cryptXOptions['exemptAddresses'] ?? '');
+            self::$exemptAddressCache = array_filter(
+                array_map(
+                    static fn(string $entry): string => strtolower(trim($entry)),
+                    explode(',', $raw)
+                ),
+                'strlen'
+            );
+        }
+
+        if (self::$exemptAddressCache === []) {
+            return false;
+        }
+
+        $address = strtolower(trim($address));
+
+        if (in_array($address, self::$exemptAddressCache, true)) {
+            return true;
+        }
+
+        if (in_array(current_filter(), self::VISITOR_WRITTEN_FILTERS, true)) {
+            return false;
+        }
+
+        $at = strrpos($address, '@');
+
+        if ($at === false) {
+            return false;
+        }
+
+        return in_array(substr($address, $at), self::$exemptAddressCache, true);
     }
 
     /**
@@ -1061,14 +1416,64 @@ final class CryptX
     private function getImageFromText(array $Match): string
     {
         self::$styleNeeded = true;
-        $scrambled = antispambot($Match[1]);
 
+        $address = (string) $Match[1];
+
+        // Until 4.2.0 this put antispambot($address) into the URL, the alt and
+        // the title. Entity-encoding stops nothing that decodes entities -- and
+        // the browser decodes them before it makes the request, so the address
+        // travelled in the request line of every image load: into the access
+        // log, and through every proxy and CDN on the way. A visitor's browser
+        // handed the address to more machines than a plainly written one would
+        // have.
+
+        // Built before the token, because the fallback below needs it too.
+        //
+        // _x() rather than __(): on its own the phrase could be a field label,
+        // a heading or a column name, and a translator seeing it in a list has
+        // no way to tell.
+        $label = _x(
+            'Email address',
+            'alt text of the picture that shows an email address',
+            'cryptx'
+        );
+
+        $token = ImageToken::mint($address);
+
+        if ($token === '') {
+            // No token, no picture. Three answers were possible and two are
+            // wrong. Falling back to the old URL would put the address straight
+            // back where this took it out. Returning an empty string leaves
+            // "<a href=\"#\" data-cx=\"...\"></a>" -- a link with nothing in it,
+            // invisible on the page and nameless to a screen reader.
+            //
+            // The third, and the tempting one, is the ordinary obfuscated text.
+            // It writes the address as " [at] " and " [dot] ", which any
+            // harvester undoes with a single regular expression -- and escaping
+            // exactly that is why somebody chose this variant. Worse, those two
+            // separators are free-text settings: a site that put them back to
+            // "@" and "." would have the address written out in full.
+            //
+            // So the label the picture would have carried, and no address
+            // anywhere.
+            return esc_html($label);
+        }
+
+        // Not the address in the alt attribute either. An alt is read out by
+        // screen readers and indexed by crawlers alike; putting the address
+        // there would hand it to both, and the link works for either of them
+        // without it. "Email address" says what the picture is, which is what
+        // an alt attribute is for.
+
+        // No title attribute. It used to repeat the alt text, which some
+        // assistive software then reads out twice and which adds nothing for
+        // anybody else. While both carried the address that was merely
+        // pointless; now it would be noise.
         return sprintf(
-                '<img src="%s" class="cryptxImage cryptxImage_%d" alt="%s" title="%s" />',
-                esc_url(get_bloginfo('url') . '/' . md5(get_bloginfo('url')) . '/' . $scrambled),
+                '<img src="%s" class="cryptxImage cryptxImage_%d" alt="%s" />',
+                esc_url(get_bloginfo('url') . '/' . md5(get_bloginfo('url')) . '/' . $token),
                 self::$imageCounter,
-                esc_attr($scrambled),
-                esc_attr($scrambled)
+                esc_attr($label)
         );
     }
 
@@ -1302,12 +1707,21 @@ final class CryptX
                 "\\1"
         ];
 
-        return $this->withShortcodesProtected($content, static function (string $masked) use ($src, $tar): string {
-            $result = preg_replace($src, $tar, $masked);
+        return $this->withShortcodesProtected($content, function (string $masked) use ($src, $tar): string {
+            // Exempt addresses are set aside for the duration. The eight
+            // patterns below are a preg_replace, not a callback, so there is no
+            // per-match decision to hook into -- and rewriting that machinery
+            // to get one would risk far more than it buys.
+            return $this->withExemptAddressesProtected(
+                $masked,
+                static function (string $inner) use ($src, $tar): string {
+                    $result = preg_replace($src, $tar, $inner);
 
-            // Same reasoning as elsewhere: a PCRE failure yields null, and
-            // handing that on would silently empty the page.
-            return $result ?? $masked;
+                    // Same reasoning as elsewhere: a PCRE failure yields null,
+                    // and handing that on would silently empty the page.
+                    return $result ?? $inner;
+                }
+            );
         });
     }
 
@@ -1328,6 +1742,34 @@ final class CryptX
         // secret, link text and exclusion list -- which is how the bug was
         // found in the first place.
         $this->refreshForCurrentSite();
+
+        // Nothing is written into a site whose tables do not exist yet.
+        // refreshForCurrentSite() returns early in that case WITHOUT touching
+        // the static option list -- and that list is static, so it survives
+        // switch_to_blog(). The update_option() at the end of this method would
+        // then write the PREVIOUS site's values into the new one, exclusion
+        // list included: the 4.1.1 bug, reached through a different door.
+        //
+        // No caller does that today (wp_initialize_site runs at priority 20,
+        // after the tables exist), which is exactly why this is here: the
+        // guarantee should not depend on the priority of somebody else's hook.
+        if (is_multisite() && !wp_is_site_initialized(get_current_blog_id())) {
+            return;
+        }
+
+        // A site that has never stored anything starts from the network's
+        // defaults rather than the plugin's. Only then: a site with a stored
+        // option has an administrator who chose something, and a network
+        // default is a starting point, not an instruction. Getting that
+        // backwards is how 4.1.1 came to publish addresses on sites whose
+        // owners had excluded them -- the two settings that caused it are not
+        // shareable at all, see Admin\NetworkDefaults.
+        if (is_multisite() && get_option('cryptX', null) === null) {
+            self::$cryptXOptions = array_merge(
+                self::$cryptXOptions,
+                Admin\NetworkDefaults::forNewSite()
+            );
+        }
 
         self::$cryptXOptions['admin_notices_deprecated'] = true;
         if (self::$cryptXOptions['excludedIDs'] == "") {
@@ -1533,6 +1975,16 @@ final class CryptX
      */
     private function addPostIdToExcludedIdsIfNecessary(array $excludedIds, int $postId): array
     {
+        // The only caller, addPostIdToExcludedList(), checks the nonce field,
+        // then wp_verify_nonce(), then current_user_can('edit_post', $postId)
+        // before reaching this method. The scanner cannot follow three call
+        // levels and sees only the superglobal. Read as presence or absence of
+        // a checkbox; the value is never used.
+        //
+        // The annotation has to sit on the line directly above the statement --
+        // with the explanation above it, it silenced the next comment line and
+        // the warning stayed.
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing
         if (isset($_POST['disable_cryptx_pageid'])) {
             $excludedIds[] = $postId;
         }
@@ -1713,6 +2165,15 @@ final class CryptX
                 unset(self::$cryptXOptions['opt_linktext']);
             }
         }
+
+        // Only a feature update earns a review prompt, and only in a fortnight
+        // -- Admin\ReviewNotice decides both, because that is where the rule
+        // can be read next to the reason for it. This is the only place that
+        // still knows which version was installed before.
+        self::$cryptXOptions = Admin\ReviewNotice::scheduleAfterUpdate(
+            self::$cryptXOptions,
+            (string) $storedVersion
+        );
 
         self::$cryptXOptions['version'] = CRYPTX_VERSION;
         self::$cryptXOptions = wp_parse_args(self::$cryptXOptions, $this->getCryptXOptionsDefaults());
@@ -2056,6 +2517,14 @@ final class CryptX
             return $originalValue;
         }
 
+        // Left exactly as written, link and all. "Leave this address alone"
+        // has to mean all three stages, not just the visible text -- an
+        // address that keeps its readable form but loses its working mailto is
+        // neither protected nor usable.
+        if ($this->isAddressExempt($emailAddress)) {
+            return $originalValue;
+        }
+
         // The budget is what the browser will still accept once "mailto:",
         // the address and the "?" are in place.
         $query = $this->sanitizeMailtoQuery(
@@ -2109,7 +2578,18 @@ final class CryptX
                         esc_attr($payloadMode)
                 );
                 if ($payloadMode === 'secure') {
-                    $attributes .= sprintf(' data-cxk="%s"', esc_attr($password));
+                    // The key travels with the link, so changing the secret
+                    // never breaks one that is already out there. The iteration
+                    // count did not, and that was the real dead-link problem:
+                    // it was read from the global cryptxConfig at click time,
+                    // so raising it in the settings silently killed every link
+                    // in every cached page and in every browser tab still open.
+                    // Now each link says how it was made.
+                    $attributes .= sprintf(
+                        ' data-cxk="%s" data-cxi="%d"',
+                        esc_attr($password),
+                        SecureEncryption::getIterations()
+                    );
                 }
 
                 // The raw target, not the sanitised address: they differ as
@@ -2125,8 +2605,12 @@ final class CryptX
                 $return = $this->addClassToAnchor($return, self::LINK_CLASS);
             } else {
                 // Legacy form, kept for installations that depend on it.
+                // The iteration count is passed here too, as a third argument.
+                // Older pages call the function with two, which still works --
+                // it then falls back to the configured value, exactly as before.
                 $javaHandler = $payloadMode === 'secure'
-                        ? "javascript:secureDecryptAndNavigate('" . esc_js($encryptedEmail) . "', '" . esc_js($password) . "')"
+                        ? "javascript:secureDecryptAndNavigate('" . esc_js($encryptedEmail) . "', '"
+                            . esc_js($password) . "', " . SecureEncryption::getIterations() . ")"
                         : "javascript:DeCryptX('" . esc_js($encryptedEmail) . "')";
 
                 $return = str_ireplace('mailto:' . $rawTarget, $javaHandler, $originalValue);
@@ -2197,6 +2681,15 @@ final class CryptX
             // mints -- persisting the unsaved form along with it. A test that
             // watches pre_update_option_cryptX found exactly that.
             $stored['encryption_password'] = (new Config($stored))->getEncryptionPassword();
+        }
+
+        // Same reasoning, same trap, second secret. The image variant mints one
+        // of its own the first time an address is drawn as a picture -- and the
+        // first time that happens is usually in this very preview, the moment
+        // an administrator picks "image" from the list. Minting it through the
+        // throwaway Config below would save the unsaved form along with it.
+        if (empty($stored['image_token_secret'])) {
+            $stored['image_token_secret'] = (new Config($stored))->getImageTokenSecret();
         }
 
         $merged = wp_parse_args($overrides, $stored);
