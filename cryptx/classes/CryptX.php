@@ -2066,6 +2066,13 @@ final class CryptX
      * decision cannot be deferred -- the head is sent before the content runs.
      * In that configuration the script is enqueued unconditionally, as before.
      *
+     * That head branch deliberately does not look at "java" at all, and never
+     * did -- this method leaves it untouched. It follows that a
+     * "[cryptx java=...]" shortcode override has nothing to add there: the
+     * script is already on every page regardless of the global setting, so
+     * only the footer branch below needs to read "java" or care about a
+     * shortcode overriding it.
+     *
      * @return void
      */
     public function loadJavascriptFiles(): void
@@ -2079,6 +2086,30 @@ final class CryptX
         if (!$inFooter) {
             wp_enqueue_script('cryptx-js');
             wp_enqueue_style('cryptx-styles');
+        } elseif (!empty(self::$cryptXOptions['java'])) {
+            // Footer placement, JavaScript handler enabled: enqueue cryptx-js
+            // unconditionally, here, before it is known whether THIS request's
+            // content carries an address. wp_register_script() above already
+            // registered it with $inFooter = true, so this does not move the
+            // print location -- it still prints in wp_footer, exactly as
+            // before. Deferring to enqueueAssetsIfNeeded() (scriptNeeded) only
+            // covers a classic page load, where the address a visitor clicks
+            // is guaranteed to be in the same document that carried the
+            // script. A client-side navigation (swup.js, PJAX, Barba, Turbo)
+            // can land a visitor on a page with no address at all and then
+            // drop .cryptx-link elements in later, without ever loading a
+            // second script -- the delegated handler in cryptx.js was simply
+            // never attached. See
+            // docs/entscheidungen/2026-09-11-assets-bei-clientseitiger-navigation.md
+            // for the analysis.
+            //
+            // Known remaining gap, not closable from here: this branch only
+            // reads the global "java" setting. A page whose first load carries
+            // no [cryptx java="1"] shortcode, under a global java = 0, still
+            // enqueues nothing here -- so a later client-side navigation to a
+            // page that DOES carry that shortcode still finds no click handler
+            // attached. See the decision doc above for why this is left open.
+            wp_enqueue_script('cryptx-js');
         }
     }
 
@@ -2092,12 +2123,45 @@ final class CryptX
     public function enqueueAssetsIfNeeded(): void
     {
         if (self::$scriptNeeded) {
+            // Still needed as a net: a shortcode can set java=1 for its own
+            // instance while the global setting says java=0, since "java" is
+            // not in NOT_SETTABLE_BY_SHORTCODE. loadJavascriptFiles() only
+            // sees the global setting, so this is what catches that case. A
+            // second wp_enqueue_script() on an already-enqueued handle is a
+            // no-op.
             wp_enqueue_script('cryptx-js');
         }
 
-        if (self::$styleNeeded) {
+        // wp_register_style() has no footer flag to lean on the way the
+        // script does, and enqueuing the stylesheet at wp_enqueue_scripts
+        // would move it from the footer to <head> -- a behaviour change for
+        // classic navigation, which is exactly what must not happen. So the
+        // same client-side-navigation gap for a configured picture variant
+        // (opt_linktext 2/3/5, the only settings that need img.cryptxImage
+        // { height: 1em }) is closed here instead, gated on the setting
+        // alone rather than on whether THIS request's content produced one.
+        if (self::$styleNeeded || self::isPictureLinktext((int) (self::$cryptXOptions['opt_linktext'] ?? 0))) {
             wp_enqueue_style('cryptx-styles');
         }
+    }
+
+    /**
+     * Whether an opt_linktext setting renders links as pictures.
+     *
+     * Same known gap as the script branch in loadJavascriptFiles(), and purely
+     * cosmetic here: a page whose first load carries no picture-producing
+     * shortcode override, under a global opt_linktext that is not 2/3/5, still
+     * skips the stylesheet -- a later client-side navigation to a page that
+     * DOES render a picture link can arrive without img.cryptxImage. See
+     * docs/entscheidungen/2026-09-11-assets-bei-clientseitiger-navigation.md.
+     *
+     * @param int $optLinktext The opt_linktext setting value.
+     *
+     * @return bool
+     */
+    private static function isPictureLinktext(int $optLinktext): bool
+    {
+        return in_array($optLinktext, [2, 3, 5], true);
     }
 
     /**

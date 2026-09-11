@@ -4,7 +4,7 @@ Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_i
 Tags: antispam, mail, spam protection, email encryption, privacy
 Requires at least: 6.7
 Tested up to: 7.1
-Stable tag: 4.2.0
+Stable tag: 4.2.1
 Requires PHP: 8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -128,6 +128,12 @@ Yes, you can enable the meta box feature to control encryption on individual pos
 For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/cryptx/ "Plugin Homepage")
 
 == Changelog ==
+= 4.2.1 =
+* **Fixed** with the JavaScript variant switched on, the script is now delivered on every page, not only on pages that themselves carry a protected address. Themes that exchange page content in the browser without rebuilding the document -- swup.js and other client-side routers work that way -- brought protected links onto the screen for which no click handler had ever been loaded. Those links did nothing at all until the visitor reloaded the page in full. It has been that way since 4.0.12, when delivery was made conditional on the page at hand
+* **Fixed** the same for the stylesheet with "Instead of the address, show" set to one of the picture options: `css/cryptx.css` is now delivered as soon as a picture variant is configured, so a link that reaches the browser after the page was built is still shown at the right size
+* **Fixed** a single click could open the mail program twice wherever a theme or a loader runs the script a second time on the same document. The guard against attaching the click handler twice is now kept on the document rather than inside the script, which also makes `initCryptxLinkHandler(document)` work on a second document, as it was always meant to
+* if you run a full-page cache, empty it after the update: pages stored before it do not carry the script yet, and they stay broken until the cache turns over by itself
+
 = 4.2.0 =
 * **New** on a multisite network, the network administrator can set the defaults a newly created site starts with, under Network Admin / Settings / CryptX. Sites that already exist are never changed -- every site keeps its own settings, as it has since 4.1.1. Two settings are deliberately not shareable: excluded post IDs and the uploaded image refer to things that exist on one site only, and copying the first of them is exactly what left addresses unprotected before 4.1.1
 * **New** WP-CLI: `wp cryptx settings` reads and writes the settings, `wp cryptx scan` runs the body and the title of every published post through the real filters and reports the ones that still carry a readable address -- including addresses in titles, which CryptX cannot protect because a title reaches the page along a path no plugin filter touches. With `--url` both work per site, so a network can be handled from a shell loop rather than from forty screens
@@ -373,6 +379,9 @@ For more information, visit the [Plugin Homepage](http://weber-nrw.de/wordpress/
 * Add Option to disable CryptX on single post/page
 
 == Upgrade Notice ==
+
+= 4.2.1 =
+Fixes protected links that did nothing on themes which exchange page content in the browser. Nothing to do -- unless you run a full-page cache: empty it, because pages stored before the update do not carry the script yet and stay broken until the cache turns over.
 
 = 4.2.0 =
 Contains a security fix: with the picture variant, the address stood in the web address the picture was fetched under, and so in your access log. Also fixes changing "Key strengthening", which until now broke every link already published. Nothing to do.

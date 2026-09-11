@@ -516,8 +516,6 @@ const CRYPTX_ATTR_MODE = 'data-cxm';
 const CRYPTX_ATTR_ITERATIONS = 'data-cxi';
 const CRYPTX_MAX_DELEGATION_DEPTH = 50;
 
-let cryptxLinkHandlerAttached = false;
-
 /**
  * True only when the Web Crypto API is usable (secure context, modern browser)
  * @returns {boolean}
@@ -656,6 +654,18 @@ async function handleCryptxLinkClick(event) {
 
 /**
  * Attaches the single delegated listener. Idempotent.
+ *
+ * The "attached" flag lives on the document itself (an expando property),
+ * not in a closure variable. Two things went wrong with a closure variable:
+ * first, any plugin or loader that runs cryptx.js a second time on the same
+ * document -- @swup/scripts-plugin does, Turbo/Hotwire does, any AJAX loader
+ * that brings footer markup along does -- gets a fresh closure and therefore
+ * a second `click` listener on `document`; measured: one click fired
+ * `mailto:` twice. Second, initCryptxLinkHandler(otherDocument) is exported
+ * for exactly this use but never worked, because the closure flag was
+ * already true from the main document and nothing was attached to the one
+ * passed in. Marking the document, not the module, fixes both with the same
+ * few lines.
  * @param {Object} [targetDocument]
  * @returns {boolean} true when the listener was attached by this call
  */
@@ -666,12 +676,12 @@ function initCryptxLinkHandler(targetDocument) {
 		return false;
 	}
 
-	if (cryptxLinkHandlerAttached) {
+	if (doc.__cryptxLinkHandlerAttached) {
 		return false;
 	}
 
 	doc.addEventListener('click', handleCryptxLinkClick, false);
-	cryptxLinkHandlerAttached = true;
+	doc.__cryptxLinkHandlerAttached = true;
 
 	return true;
 }

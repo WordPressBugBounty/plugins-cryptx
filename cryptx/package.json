@@ -1,6 +1,6 @@
 {
   "name": "cryptx",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "description": "Build setup for the CryptX settings screen and the editor block. React and the component library come from WordPress itself, so only this plugin's own code is bundled.",
   "private": true,
   "license": "GPL-2.0-or-later",
@@ -10,9 +10,11 @@
   "scripts": {
     "build": "wp-scripts build index=src/index.js block/index=src/block/index.js",
     "start": "wp-scripts start index=src/index.js block/index=src/block/index.js",
-    "lint:js": "wp-scripts lint-js src"
+    "lint:js": "wp-scripts lint-js src",
+    "test:e2e": "node tests/e2e/dynamic-navigation.mjs"
   },
   "devDependencies": {
-    "@wordpress/scripts": "^34.1.0"
+    "@wordpress/scripts": "^34.1.0",
+    "playwright": "^1.62.1"
   }
 }
